@@ -62,7 +62,7 @@ relay (already trusted by MCGalaxy, `allow-ip-forwarding`): nothing else to open
 
 | Setting | Default | `server.properties` |
 |---|---|---|
-| Nom du serveur | `[FR] TeamKit · ClassiCube` | `server-name`. MCGalaxy only accepts ASCII letters, digits and ASCII punctuation here and replaces the **whole** name by `[MCGalaxy] Default` otherwise (`ConfigStringAttribute.Constrain`). The script converts accents and common symbols (`é`→`e`, `·`/`–`→`-`, `« »`→`"`, `œ`→`oe`…) and drops the rest, with a console note: the default becomes `[FR] TeamKit - ClassiCube` |
+| Nom du serveur | `[FR] TeamKit - ClassiCube` | `server-name`. MCGalaxy only accepts ASCII letters, digits and ASCII punctuation here and replaces the **whole** name by `[MCGalaxy] Default` otherwise (`ConfigStringAttribute.Constrain`). The script converts accents and common symbols (`é`→`e`, `·`/`–`→`-`, `« »`→`"`, `œ`→`oe`…) and drops the rest, with a console note: the default becomes `[FR] TeamKit - ClassiCube` |
 | Message d'accueil | `Bienvenue sur TeamKit ! Infos et Discord : teamkit.fr` | `motd` (64 characters shown; `+hax`/`-fly`… words have a meaning) |
 | Nom du propriétaire (affiché) | `TeamKit` | `server-owner`: display text only, gives no rights |
 | Visible dans la liste classicube.net | ticked | `public` |

@@ -9,7 +9,7 @@
         "InputType": "text",
         "ParamFieldName": "nom_serveur",
         "IncludeInCommandLine": false,
-        "DefaultValue": "[FR] TeamKit · ClassiCube",
+        "DefaultValue": "[FR] TeamKit - ClassiCube",
         "EnumValues": {}
     },
     {
