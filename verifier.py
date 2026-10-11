@@ -786,6 +786,7 @@ for besoin, pourquoi in [
     ('export TERM=dumb', 'pas de codes couleur dans la console d’AMP'),
     ('exec "$BIN"', 'la console d’AMP doit arriver sur l’entrée du serveur'),
     ('exec mono "$ICI/MCGalaxyCLI.exe"', 'forme Mono : même processus, la console d’AMP arrive sur l’entrée du serveur'),
+    ('ln -sfn "/usr/lib/mono/4.5/$LIB" "$ICI/$LIB"', 'forme Mono : //reference System.Core.dll doit être trouvé par mcs (/nostdlib+)'),
     ('perl -e "$PERL_REGLAGES" "$REGLAGES" "$PROPS" "$PORT" "$JOUEURS" "$AUTH"', 'valeurs passées en arguments, jamais dans du code'),
     ('rename("$auth.tmp", $auth)', 'authservices.properties remplacé en une fois'),
     ('$ecrire{"verify-lan-ips"} = "true"', 'pseudos vérifiés aussi depuis le loopback et le réseau Docker'),

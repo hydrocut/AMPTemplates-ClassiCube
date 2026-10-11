@@ -394,6 +394,16 @@ fi
 export TERM=dumb
 if [ "$MONO" = 1 ]; then
   echo "TeamKit : demarrage de MCGalaxy avec compilateur de plugins (Mono). Plugin : plugins/MonPlugin.cs, puis /pcompile MonPlugin et /pload MonPlugin ici. Pour devenir proprietaire : /rank <ton pseudo ClassiCube> owner."
+  # MCGalaxy lance mcs avec /nostdlib+ : la ligne « //reference System.Core.dll » d'un plugin
+  # n'est alors cherchee que dans le dossier du serveur, et l'erreur de mcs part sur stderr, que
+  # MCGalaxy avale (« Plugin compiled successfully » sans aucun .dll, vu le 11/10/2026 avec
+  # MobAI et VenksSurvival). On pose donc a cote du serveur des liens vers les bibliotheques de
+  # Mono ; un vrai fichier du meme nom n'est jamais remplace.
+  for LIB in System.Core.dll System.Data.dll System.Xml.dll System.Numerics.dll System.Runtime.Serialization.dll; do
+    if [ -f "/usr/lib/mono/4.5/$LIB" ] && { [ -L "$ICI/$LIB" ] || [ ! -e "$ICI/$LIB" ]; }; then
+      ln -sfn "/usr/lib/mono/4.5/$LIB" "$ICI/$LIB"
+    fi
+  done
   # Meme processus (exec) : la console d'AMP arrive sur l'entree du serveur, et le relais
   # (setpriv --pdeathsig) s'arrete avec lui comme avec le binaire autonome.
   exec mono "$ICI/MCGalaxyCLI.exe"
