@@ -1,0 +1,14 @@
+# Rendu par AMP a chaque demarrage depuis AMP_reglages-classicube.txt (onglet Configuration).
+# Une ligne cle=valeur par reglage, lue par lancer-classicube.sh qui recopie les valeurs
+# dans properties/server.properties. Ne pas modifier ici : changer les reglages dans AMP.
+version_dev={{version_dev}}
+liste_publique={{liste_publique}}
+verifier_pseudos={{verifier_pseudos}}
+places_invites={{places_invites}}
+rang_defaut={{rang_defaut}}
+accepter_reglement={{accepter_reglement}}
+theme_carte={{theme_carte}}
+filtre_grossieretes={{filtre_grossieretes}}
+proprietaire_affiche={{proprietaire_affiche}}
+message_accueil={{message_accueil}}
+nom_serveur={{nom_serveur}}

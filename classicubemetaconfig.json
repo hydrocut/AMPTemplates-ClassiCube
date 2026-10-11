@@ -1,0 +1,8 @@
+[
+    {
+        "ConfigFile": "reglages-classicube.txt",
+        "ConfigType": "template",
+        "AutoMap": true,
+        "ConfigFileTemplate": "classicube/AMP_reglages-classicube.txt"
+    }
+]

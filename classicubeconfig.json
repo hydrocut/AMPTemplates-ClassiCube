@@ -1,0 +1,206 @@
+[
+    {
+        "DisplayName": "Nom du serveur",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Serveur:dns:1",
+        "Description": "Affiché dans la liste des serveurs de classicube.net et en haut de l'écran de chargement (server-name). 64 caractères au plus. MCGalaxy n'accepte ici que les lettres sans accent, les chiffres et la ponctuation ASCII : sinon il jette le nom entier et affiche « [MCGalaxy] Default ». Au démarrage, les accents et symboles courants sont donc convertis (é → e, ç → c, · et tirets longs → -, guillemets « » → \") et les autres caractères retirés, avec un message dans la console.",
+        "Keywords": "nom,name,server-name,serveur,liste",
+        "FieldName": "nom_serveur",
+        "InputType": "text",
+        "ParamFieldName": "nom_serveur",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "[FR] TeamKit · ClassiCube",
+        "EnumValues": {}
+    },
+    {
+        "DisplayName": "Message d'accueil",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Serveur:dns:1",
+        "Description": "Affiché sous le nom pendant le chargement de la carte (motd). 64 caractères au plus (au-delà, le jeu coupe). Codes couleur de ClassiCube acceptés (&a vert, &e jaune, &c rouge...). Attention : les mots +hax / -hax, +ophax / -ophax, +fly / -fly, +noclip / -noclip, +speed / -speed, +respawn / -respawn et +thirdperson / -thirdperson ont un sens pour le jeu (ils autorisent ou interdisent le vol, la vitesse...). Vide = MCGalaxy met « Welcome ».",
+        "Keywords": "accueil,bienvenue,motd,message",
+        "FieldName": "message_accueil",
+        "InputType": "text",
+        "ParamFieldName": "message_accueil",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "Bienvenue sur TeamKit ! Infos et Discord : teamkit.fr",
+        "EnumValues": {}
+    },
+    {
+        "DisplayName": "Nom du propriétaire (affiché)",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Serveur:dns:1",
+        "Description": "Simple texte montré aux joueurs, par exemple « Contactez TeamKit pour réinitialiser votre mot de passe » (server-owner). Il ne donne AUCUN droit. Pour devenir propriétaire du serveur : connectez-vous une fois avec votre compte ClassiCube, puis tapez dans la console d'AMP « /rank VotrePseudo owner ». À la connexion suivante, le serveur vous demandera de choisir un mot de passe de vérification avec /setpass, puis de le taper avec /pass à chaque connexion (protection des comptes staff de MCGalaxy).",
+        "Keywords": "proprietaire,owner,server-owner,admin,rank",
+        "FieldName": "proprietaire_affiche",
+        "InputType": "text",
+        "ParamFieldName": "proprietaire_affiche",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "TeamKit",
+        "EnumValues": {}
+    },
+    {
+        "DisplayName": "Visible dans la liste classicube.net",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Serveur:dns:1",
+        "Description": "Coché = le serveur apparaît dans la liste publique de classicube.net (public). Décoché = serveur non listé : on le rejoint seulement avec son lien, écrit dans la console au démarrage (« Server URL found: http://www.classicube.net/server/play/... »). Dans les deux cas, le serveur se signale à classicube.net : c'est ce qui permet de vérifier les pseudos.",
+        "Keywords": "public,liste,classicube.net,visible,annonce",
+        "FieldName": "liste_publique",
+        "InputType": "checkbox",
+        "ParamFieldName": "liste_publique",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "true",
+        "EnumValues": {
+            "False": "false",
+            "True": "true"
+        }
+    },
+    {
+        "DisplayName": "Joueurs maximum",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Joueurs:group:2",
+        "Description": "Nombre de joueurs connectés en même temps, staff compris (max-players). 256 au plus (limite de MCGalaxy).",
+        "Keywords": "joueurs,places,max,slots,max-players,maxplayers",
+        "FieldName": "$MaxUsers",
+        "InputType": "number",
+        "MinValue": "1",
+        "MaxValue": "256",
+        "ParamFieldName": "max-players",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "32",
+        "Suffix": "joueurs",
+        "EnumValues": {}
+    },
+    {
+        "DisplayName": "Places invités",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Joueurs:group:2",
+        "Description": "Nombre de joueurs de rang Guest (les nouveaux venus) acceptés en même temps (max-guests). Mettre un peu moins que Joueurs maximum garde des places libres pour les rangs au-dessus (staff, habitués). Ramené à Joueurs maximum s'il le dépasse.",
+        "Keywords": "invites,guests,max-guests,places,nouveaux",
+        "FieldName": "places_invites",
+        "InputType": "number",
+        "MinValue": "1",
+        "MaxValue": "256",
+        "ParamFieldName": "places_invites",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "30",
+        "Suffix": "joueurs",
+        "EnumValues": {}
+    },
+    {
+        "DisplayName": "Vérifier les pseudos ClassiCube",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Joueurs:group:2",
+        "Description": "À LAISSER COCHÉ. Coché = chaque joueur doit être connecté à son compte classicube.net : personne ne peut prendre le pseudo d'un autre (verify-names). DÉCOCHÉ = N'IMPORTE QUI peut se connecter sous le pseudo d'un admin ou du propriétaire et obtenir ses droits (sauf le mot de passe /pass du staff). Réservé aux essais en réseau local.",
+        "Keywords": "verification,pseudo,verify-names,securite,compte",
+        "FieldName": "verifier_pseudos",
+        "InputType": "checkbox",
+        "ParamFieldName": "verifier_pseudos",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "true",
+        "EnumValues": {
+            "False": "false",
+            "True": "true"
+        }
+    },
+    {
+        "DisplayName": "Rang par défaut",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Joueurs:group:2",
+        "Description": "Rang donné à un joueur qui vient pour la première fois (default-rank). Guest : pose les blocs un par un (pas de /cuboid). Builder : peut aussi remplir des zones (/cuboid, jusqu'à 4 096 blocs d'un coup). AdvBuilder : jusqu'à 262 144 blocs d'un coup. Les rangs des joueurs déjà venus ne changent pas.",
+        "Keywords": "rang,rank,default-rank,guest,builder,droits",
+        "FieldName": "rang_defaut",
+        "InputType": "enum",
+        "ParamFieldName": "rang_defaut",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "guest",
+        "EnumValues": {
+            "guest": "Guest (invité, défaut de MCGalaxy)",
+            "builder": "Builder (constructeur)",
+            "advbuilder": "AdvBuilder (constructeur avancé)"
+        }
+    },
+    {
+        "DisplayName": "Accepter le règlement à l'arrivée",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Joueurs:group:2",
+        "Description": "Coché = un nouveau joueur ne peut ni construire ni utiliser de commandes tant qu'il n'a pas lu le règlement (/rules) et tapé /agree (agree-to-rules-on-entry). Le règlement est le fichier text/rules.txt de l'instance (en anglais au départ : à traduire dans le gestionnaire de fichiers d'AMP).",
+        "Keywords": "reglement,rules,agree,regles,arrivee",
+        "FieldName": "accepter_reglement",
+        "InputType": "checkbox",
+        "ParamFieldName": "accepter_reglement",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "false",
+        "EnumValues": {
+            "False": "false",
+            "True": "true"
+        }
+    },
+    {
+        "DisplayName": "Filtre de grossièretés",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Joueurs:group:2",
+        "Description": "Coché = les gros mots du chat sont remplacés par des * (profanity-filter). La liste est le fichier text/badwords.txt de l'instance (mots anglais au départ, un par ligne : ajoutez les mots français dans le gestionnaire de fichiers d'AMP).",
+        "Keywords": "filtre,grossierete,insultes,profanity,chat",
+        "FieldName": "filtre_grossieretes",
+        "InputType": "checkbox",
+        "ParamFieldName": "filtre_grossieretes",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "false",
+        "EnumValues": {
+            "False": "false",
+            "True": "true"
+        }
+    },
+    {
+        "DisplayName": "Thème des nouvelles cartes",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Monde:landscape:3",
+        "Description": "Paysage utilisé par /newlvl quand on ne précise pas de thème (default-mapgen-theme). Il ne change PAS la carte principale (main) : MCGalaxy la crée toujours plate (128 × 64 × 128) au premier démarrage. Pour une autre carte principale : /newlvl NomDeCarte 256 128 256 forest, puis /main NomDeCarte (console d'AMP ou rang Admin).",
+        "Keywords": "carte,map,theme,mapgen,newlvl,generation,monde",
+        "FieldName": "theme_carte",
+        "InputType": "enum",
+        "ParamFieldName": "theme_carte",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "flat",
+        "EnumValues": {
+            "flat": "Plat (flat, défaut)",
+            "classic": "Minecraft Classic d'origine (classic)",
+            "forest": "Forêt (forest)",
+            "island": "Île (island)",
+            "mountains": "Montagnes (mountains)",
+            "ocean": "Océan (ocean)",
+            "desert": "Désert (desert)",
+            "hell": "Enfer (hell)",
+            "archipelago": "Archipel (archipelago)",
+            "atoll": "Atoll (atoll)",
+            "bay": "Baie (bay)",
+            "dunes": "Dunes (dunes)",
+            "hills": "Collines (hills)",
+            "ice": "Glace (ice)",
+            "lake": "Lac (lake)",
+            "peninsula": "Péninsule (peninsula)",
+            "river": "Rivière (river)",
+            "streams": "Ruisseaux (streams)",
+            "space": "Espace (space)",
+            "rainbow": "Arc-en-ciel (rainbow)",
+            "pixel": "Pixel art, murs blancs (pixel)",
+            "empty": "Vide (empty)"
+        }
+    },
+    {
+        "DisplayName": "Version de développement",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Installation:download:4",
+        "Description": "Décoché (recommandé) = l'Update installe la version stable de MCGalaxy (cdn.classicube.net/client/mcg/release, 1.9.5.3 en mars 2025). Coché = la version « latest », reconstruite à chaque modification du code : nouveautés et corrections plus tôt, mais pas testée. Prend effet au prochain Update. Revenir à la version stable après avoir joué en version de développement peut abîmer les fichiers (cartes, base de données) : faites une sauvegarde AMP avant de changer.",
+        "Keywords": "version,dev,developpement,latest,release,mise a jour,update",
+        "FieldName": "version_dev",
+        "InputType": "checkbox",
+        "ParamFieldName": "version_dev",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "false",
+        "EnumValues": {
+            "False": "false",
+            "True": "true"
+        }
+    }
+]

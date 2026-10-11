@@ -1,0 +1,43 @@
+[
+    {
+        "UpdateStageName": "Script d'installation",
+        "UpdateSourcePlatform": "Linux",
+        "UpdateSource": "FetchURL",
+        "UpdateSourceData": "https://raw.githubusercontent.com/hydrocut/AMPTemplates-ClassiCube/main/scripts/installer-classicube.sh",
+        "UpdateSourceArgs": "installer-classicube.sh",
+        "UpdateSourceTarget": "{{$FullBaseDir}}",
+        "UnzipUpdateSource": false,
+        "OverwriteExistingFiles": true,
+        "SkipOnFailure": false
+    },
+    {
+        "UpdateStageName": "Script de lancement",
+        "UpdateSourcePlatform": "Linux",
+        "UpdateSource": "FetchURL",
+        "UpdateSourceData": "https://raw.githubusercontent.com/hydrocut/AMPTemplates-ClassiCube/main/scripts/lancer-classicube.sh",
+        "UpdateSourceArgs": "lancer-classicube.sh",
+        "UpdateSourceTarget": "{{$FullBaseDir}}",
+        "UnzipUpdateSource": false,
+        "OverwriteExistingFiles": true,
+        "SkipOnFailure": false
+    },
+    {
+        "UpdateStageName": "Modele des reglages (AMP_reglages-classicube.txt)",
+        "UpdateSourcePlatform": "All",
+        "UpdateSource": "FetchURL",
+        "UpdateSourceData": "https://raw.githubusercontent.com/hydrocut/AMPTemplates-ClassiCube/main/scripts/AMP_reglages-classicube.txt",
+        "UpdateSourceArgs": "AMP_reglages-classicube.txt",
+        "UpdateSourceTarget": "{{$FullBaseDir}}",
+        "UnzipUpdateSource": false,
+        "OverwriteExistingFiles": true,
+        "SkipOnFailure": false
+    },
+    {
+        "UpdateStageName": "Telechargement du serveur MCGalaxy (cdn.classicube.net)",
+        "UpdateSourcePlatform": "Linux",
+        "UpdateSource": "Executable",
+        "UpdateSourceData": "/bin/bash",
+        "UpdateSourceArgs": "\"{{$FullBaseDir}}installer-classicube.sh\" \"{{$FullBaseDir}}\" \"{{version_dev}}\"",
+        "SkipOnFailure": false
+    }
+]

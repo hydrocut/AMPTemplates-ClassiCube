@@ -1,0 +1,9 @@
+[
+    {
+        "Protocol": "TCP",
+        "Port": 25565,
+        "Ref": "GamePort",
+        "Name": "Port du jeu",
+        "Description": "Seul port a ouvrir, en TCP. 25565 est le port par defaut de MCGalaxy (cle port de properties/server.properties, recopiee a chaque demarrage). Il sert au jeu ClassiCube comme au client navigateur de classicube.net, qui passe par le relais websocket de classicube.net : rien d'autre a ouvrir."
+    }
+]

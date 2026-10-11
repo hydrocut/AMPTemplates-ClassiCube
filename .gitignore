@@ -1,0 +1,20 @@
+# Ce depot ne contient que le template : MCGalaxy est telecharge depuis cdn.classicube.net
+# a chaque Update. Rien de ce qui suit ne doit y entrer.
+classicube/
+MCGalaxy
+MCGalaxy.nouveau
+.canal-mcgalaxy
+properties/
+levels/
+ranks/
+extra/
+text/
+logs/
+plugins/
+blockdb/
+*.db
+reglages-classicube.txt
+__pycache__/
+
+# Notes internes de TeamKit (essais, etapes), pas dans le depot public
+FAISABILITE.md
