@@ -1,6 +1,6 @@
 #!/bin/bash
 # lancer-classicube.sh - pose par le template AMP TeamKit (recree a chaque Update).
-# Arguments : <port du jeu> <joueurs maximum>   (ligne de commande d'AMP)
+# Arguments : <port du jeu> <joueurs maximum> [port du relais]   (ligne de commande d'AMP)
 #
 # 1. lit les reglages ecrits par AMP (reglages-classicube.txt, une ligne cle=valeur) ;
 # 2. les recopie dans properties/server.properties, A CHAQUE demarrage : MCGalaxy reecrit
@@ -8,7 +8,12 @@
 #    Configuration d'AMP doit donc etre reapplique avant chaque lancement. Seules nos cles
 #    sont touchees : une ligne existante est remplacee, une cle absente est ajoutee, le
 #    fichier est cree s'il n'existe pas encore (MCGalaxy le complete au demarrage) ;
-# 3. remplace ce script par le serveur (exec) : la console d'AMP arrive directement sur
+#    HeartbeatURL (classicube.net + service de connexion supplementaire eventuel) y est
+#    ecrit aussi, et properties/authservices.properties est reecrit (suffixe des pseudos) ;
+# 3. si la case « Relais pour un proxy web » est cochee : demarre socat, qui recoit sur le
+#    port du relais et se reconnecte a 127.0.0.1:<port du jeu>. Un nginx de la meme machine
+#    arrive ainsi en loopback, seule origine dont MCGalaxy croit l'en-tete X-Real-IP ;
+# 4. remplace ce script par le serveur (exec) : la console d'AMP arrive directement sur
 #    l'entree de MCGalaxy (/rank, /say, /save all...), et la commande d'arret d'AMP
 #    (/shutdown) aussi.
 #
@@ -19,10 +24,12 @@ ICI="$PWD"
 BIN="$ICI/MCGalaxy"
 REGLAGES="$ICI/reglages-classicube.txt"
 PROPS="$ICI/properties/server.properties"
+AUTH="$ICI/properties/authservices.properties"
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 PORT="${1:-25565}"
 JOUEURS="${2:-}"
+RELAIS_PORT="${3:-}"
 if ! [[ "$PORT" =~ ^[0-9]{1,5}$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
   echo "ERREUR : port du jeu invalide : $PORT"
   exit 1
@@ -59,12 +66,17 @@ mkdir -p "$ICI/properties" || exit 1
 PERL_REGLAGES='
 use strict;
 use warnings;
-my ($fichier, $props, $port, $joueurs) = @ARGV;
+my ($fichier, $props, $port, $joueurs, $auth) = @ARGV;
 
 # cle du modele AMP => [cle de server.properties, genre, choix possibles]
-# version_dev ne sert qu a l Update (installer-classicube.sh) : rien a ecrire.
+# version_dev ne sert qu a l Update (installer-classicube.sh), relais_web au script bash
+# (demarrage de socat) : rien a ecrire. service_connexion et suffixe_service sont traites
+# a part (HeartbeatURL et properties/authservices.properties), apres les autres.
 my %TABLE = (
   version_dev          => [undef,                     "bool"],
+  relais_web           => [undef,                     "bool"],
+  service_connexion    => ["HeartbeatURL",            "service"],
+  suffixe_service      => [undef,                     "suffixe"],
   liste_publique       => ["public",                  "bool"],
   verifier_pseudos     => ["verify-names",            "bool"],
   places_invites       => ["max-guests",              "entier"],
@@ -117,6 +129,9 @@ if (-e $fichier) {
     if (defined $courant) { $valeurs{$courant} .= " " . $l; next }
   }
   close $f;
+  # Variable laissee telle quelle par AMP (instance creee avant l ajout du reglage) :
+  # comme absente, la valeur actuelle est gardee.
+  for my $k (keys %valeurs) { delete $valeurs{$k} if $valeurs{$k} =~ /^\x7b\x7b[a-z_]+\x7d\x7d\s*\z/ }
   my @absentes = grep { !exists $valeurs{$_} } sort keys %TABLE;
   print "TeamKit : reglages absents de reglages-classicube.txt (valeur actuelle gardee) : @absentes\n" if @absentes;
 }
@@ -126,6 +141,7 @@ my %ecrire;
 for my $cle (sort keys %valeurs) {
   my ($prop, $genre, $choix) = @{$TABLE{$cle}};
   next unless defined $prop;
+  next if $genre eq "service";
   my $v = $valeurs{$cle};
   $v =~ s/[\x00-\x1f\x7f]+/ /g;          # caracteres de controle (dont retours a la ligne)
   $v =~ s/^\s+//; $v =~ s/\s+\z//;
@@ -161,9 +177,71 @@ for my $cle (sort keys %valeurs) {
   }
 }
 
+# 2b. service de connexion supplementaire (comptes d un autre site, TeamKit par exemple).
+#     MCGalaxy envoie son heartbeat a chaque adresse de HeartbeatURL (separees par des
+#     virgules), avec un sel propre a chacune ; un joueur est verifie si son mppass vaut
+#     md5(sel + pseudo) pour l une d elles, et le name-suffix de ce service (fichier
+#     properties/authservices.properties) est alors ajoute a son pseudo.
+#     MCGalaxy 1.9.5.3 n accepte dans HeartbeatURL que lettres, chiffres et : / . ,
+#     (ServerConfig.cs, ConfigString ... ":/.,") : un seul autre caractere et il remet
+#     l adresse de classicube.net seule. On refuse donc ici tout le reste.
+my $CCNET = "http://www.classicube.net/heartbeat.jsp";
+my ($service, $suffixe, $ecrire_auth) = ("", "+", 0);
+sub nettoyer { my $v = shift; $v =~ s/[\x00-\x1f\x7f]+/ /g; $v =~ s/^\s+//; $v =~ s/\s+\z//; return $v; }
+sub montrer {
+  my $c = shift;
+  return ($c =~ /^[\x21-\x7e]\z/) ? "\x22$c\x22" : ($c eq " " ? "espace" : sprintf("U+%04X", ord $c));
+}
+if (exists $valeurs{service_connexion}) {
+  $ecrire_auth = 1;
+  my $s = texte_vers_caracteres(nettoyer($valeurs{service_connexion}));
+  if ($s ne "") {
+    my $refus;
+    my ($hote, $port_s) = $s =~ m{^https://([A-Za-z0-9](?:[A-Za-z0-9.]*[A-Za-z0-9])?)(?::([0-9]{1,5}))?(?:/[A-Za-z0-9./]*)?\z};
+    if (length($s) > 200) {
+      $refus = "adresse trop longue (" . length($s) . " caracteres, 200 au plus)";
+    } elsif ($s !~ m{^https://}) {
+      $refus = "l adresse doit commencer par https://";
+    } elsif ($s =~ m{([^A-Za-z0-9:/.])}) {
+      $refus = "caractere " . montrer($1) . " interdit : MCGalaxy n accepte dans HeartbeatURL que les lettres sans accent, les chiffres, : / et . (ni tiret, ni _, ni ?, =, &, %, virgule ou espace ; sinon il oublie le service)";
+    } elsif (!defined $hote || index($hote, ".") < 0 || $hote =~ /\.\./
+             || (defined $port_s && ($port_s < 1 || $port_s > 65535))) {
+      $refus = "adresse mal formee (attendu : https://nom.de.domaine/chemin)";
+    } elsif ($hote =~ /(?:^|\.)classicube\.net\z/i) {
+      $refus = "c est deja le service de classicube.net, toujours actif";
+    }
+    if (defined $refus) {
+      print "TeamKit : service de connexion supplementaire IGNORE : $refus. Seuls les comptes classicube.net sont acceptes.\n";
+    } else {
+      $service = $s;
+    }
+  }
+  if ($service ne "") {
+    my $x = exists $valeurs{suffixe_service} ? texte_vers_caracteres(nettoyer($valeurs{suffixe_service})) : "+";
+    if ($x =~ /^[A-Za-z0-9+~_.-]{1,3}\z/ && $x =~ /[+~-]/) {
+      $suffixe = $x;
+    } else {
+      utf8::encode($x) if utf8::is_utf8($x);
+      print "TeamKit : suffixe des pseudos \x22$x\x22 refuse (1 a 3 caracteres parmi lettres, chiffres, + ~ _ . -, dont au moins un + ~ ou - : les pseudos classicube.net ne peuvent pas en contenir, un compte de l autre site ne peut donc jamais prendre le pseudo d un joueur classicube.net) : \x22+\x22 utilise.\n";
+      $suffixe = "+";
+    }
+    print "TeamKit : service de connexion supplementaire : $service (pseudos de ce service suivis de \x22$suffixe\x22, par exemple Pseudo$suffixe ; les joueurs classicube.net gardent leur pseudo).\n";
+    if (exists $ecrire{"verify-names"} && $ecrire{"verify-names"} eq "false") {
+      print "TeamKit : ATTENTION, verification des pseudos coupee : le service supplementaire ne sert a rien, tout le monde entre sans compte.\n";
+    }
+  }
+  $ecrire{"HeartbeatURL"} = $service ne "" ? "$CCNET,$service" : $CCNET;
+}
+
 # Imposes par le template : port et joueurs maximum viennent d AMP (onglet Reseau et Joueurs maximum).
 $ecrire{"port"} = $port;
 $ecrire{"max-players"} = $joueurs;
+# verify-lan-ips : MCGalaxy ne verifie PAS le pseudo d une connexion venant du loopback
+# ou d un reseau prive (172.16/12, 10/8, 192.168/16) si cette cle vaut false (defaut).
+# En conteneur ponte, c est le cas du relais (127.0.0.1), d un proxy de l hote passe par
+# docker-proxy (172.17.0.1) et des autres conteneurs : n importe lequel pourrait entrer
+# sous le pseudo du proprietaire. Toujours true ici.
+$ecrire{"verify-lan-ips"} = "true";
 if (exists $ecrire{"max-guests"} && $ecrire{"max-guests"} > $joueurs) {
   print "TeamKit : places invites ($ecrire{q{max-guests}}) ramenees a joueurs maximum ($joueurs).\n";
   $ecrire{"max-guests"} = $joueurs;
@@ -202,12 +280,95 @@ if ($nouveau ne $texte) {
   print $o $nouveau; close $o or die "ERREUR : ecriture de $props impossible\n";
   rename("$props.tmp", $props) or die "ERREUR : remplacement de $props impossible\n";
 }
+
+# 4. properties/authservices.properties, reecrit entierement (meme format que
+#    AuthService.SaveServices de MCGalaxy) : un bloc pour classicube.net, sans suffixe,
+#    et un pour le service supplementaire. Le sel n y est pas : MCGalaxy en tire un neuf
+#    pour chaque service a chaque demarrage.
+if ($ecrire_auth) {
+  my @blocs = ([$CCNET, ""]);
+  push @blocs, [$service, $suffixe] if $service ne "";
+  my $texte_auth = join("", map { "$_\n" } (
+    "# Authentication services configuration",
+    "#   There is no reason to modify these configuration settings, unless the server has been configured",
+    "#    to send heartbeats to multiple authentication services (e.g. both ClassiCube.net and BetaCraft.uk)",
+    "#   DO NOT EDIT THIS FILE UNLESS YOU KNOW WHAT YOU ARE DOING",
+    "#   TeamKit : rewritten by lancer-classicube.sh at every start, from the AMP settings",
+    "#    (Connexion par un autre site). Change them in AMP, not here.",
+    "",
+    "#URL = string",
+    "#   URL of the authentication service the following settings apply to",
+    "#   (this should be the same as one of the heartbeat URLs specified in server.properties)",
+    "#name-suffix = string",
+    "#   Characters that are appended to usernames of players that login through the authentication service",
+    "#   (used to prevent username collisions between authentication services that would otherwise occur)",
+    "#skin-prefix = string",
+    "#   Characters that are prefixed to skin name of players that login through the authentication service",
+    "#   (used to ensure players from other authentication services see the correct skin)",
+    "#mojang-auth = boolean",
+    "#   Whether to try verifying users using Mojang\x27s authentication servers if mppass verification fails",
+    "#   NOTE: This should only be used for the Betacraft.uk authentication service",
+    "",
+    map { ("URL = $_->[0]", "name-suffix = $_->[1]", "skin-prefix = ", "mojang-auth = False", "") } @blocs,
+  ));
+  my $avant = "";
+  if (-e $auth) {
+    open(my $x, "<:raw", $auth) or die "ERREUR : lecture de $auth impossible\n";
+    local $/; $avant = <$x>; close $x;
+    $avant = "" unless defined $avant;
+  }
+  if ($texte_auth ne $avant) {
+    open(my $o, ">:raw", "$auth.tmp") or die "ERREUR : ecriture de $auth impossible\n";
+    print $o $texte_auth; close $o or die "ERREUR : ecriture de $auth impossible\n";
+    rename("$auth.tmp", $auth) or die "ERREUR : remplacement de $auth impossible\n";
+  }
+}
 my $pub = (exists $ecrire{public} && $ecrire{public} eq "false") ? "serveur non liste (lien dans la console)" : "liste publique classicube.net";
 print "TeamKit : reglages d AMP recopies dans properties/server.properties (port $port, $joueurs joueurs au plus, $pub).\n";
 '
-perl -e "$PERL_REGLAGES" "$REGLAGES" "$PROPS" "$PORT" "$JOUEURS" || exit 1
+perl -e "$PERL_REGLAGES" "$REGLAGES" "$PROPS" "$PORT" "$JOUEURS" "$AUTH" || exit 1
+
+# ── Relais pour un proxy web (case relais_web) ───────────────────────────────────
+# La valeur de la case est seulement comparee a « true » : jamais executee.
+RELAIS=$(sed -n 's/^relais_web=\(.*\)$/\1/p' "$REGLAGES" 2>/dev/null | head -n 1 | tr -d '\r[:space:]')
+RELAIS_ACTIF=0
+if [ "${RELAIS,,}" = true ]; then
+  if ! [[ "$RELAIS_PORT" =~ ^[0-9]{1,5}$ ]] || [ "$((10#$RELAIS_PORT))" -lt 1 ] || [ "$((10#$RELAIS_PORT))" -gt 65535 ]; then
+    echo "TeamKit : relais pour un proxy web NON demarre : le port du relais (RelayPort) n'est pas arrive sur la ligne de commande. Une instance creee avant l'ajout de ce port ne l'a pas : recree l'instance (le monde se garde par une sauvegarde AMP)."
+  elif [ "$((10#$RELAIS_PORT))" -eq "$((10#$PORT))" ]; then
+    echo "TeamKit : relais pour un proxy web NON demarre : son port ($RELAIS_PORT) est celui du jeu. Donne-lui un autre port dans l'onglet Reseau d'AMP."
+  else
+    RELAIS_PORT=$((10#$RELAIS_PORT))
+    RELAIS_ACTIF=1
+  fi
+fi
 # Utilise seulement par verifier.py : applique les reglages sans lancer le serveur.
 [ -n "$TK_ESSAI_REGLAGES" ] && exit 0
+
+if [ "$RELAIS_ACTIF" = 1 ]; then
+  if ! command -v socat >/dev/null 2>&1; then
+    echo "TeamKit : relais pour un proxy web NON demarre : socat manque. Il est installe par ExtraContainerPackages a la creation du conteneur : recree l'instance."
+  else
+    # Ecoute sur le port du relais, une connexion vers 127.0.0.1:<port du jeu> par client
+    # (fork). MCGalaxy voit donc 127.0.0.1 et croit l'en-tete X-Real-IP envoye par nginx.
+    # --pdeathsig : socat recoit SIGTERM quand son parent s'arrete. Ce parent est ce
+    # processus, qui devient MCGalaxy a l'exec plus bas : le relais vit et meurt avec le
+    # serveur (un /restart de MCGalaxy garde le meme processus, donc le relais).
+    if command -v setpriv >/dev/null 2>&1; then
+      setpriv --pdeathsig TERM -- socat TCP-LISTEN:"$RELAIS_PORT",fork,reuseaddr,nodelay TCP:127.0.0.1:"$PORT",nodelay </dev/null &
+    else
+      echo "TeamKit : setpriv absent de l'image : le relais ne s'arretera qu'avec le conteneur."
+      socat TCP-LISTEN:"$RELAIS_PORT",fork,reuseaddr,nodelay TCP:127.0.0.1:"$PORT",nodelay </dev/null &
+    fi
+    RELAIS_PID=$!
+    sleep 1
+    if kill -0 "$RELAIS_PID" 2>/dev/null; then
+      echo "TeamKit : relais pour un proxy web actif : port $RELAIS_PORT -> 127.0.0.1:$PORT. A ne JAMAIS ouvrir au monde : seul un proxy (nginx) de cette machine doit le joindre (voir le README du template)."
+    else
+      echo "TeamKit : relais pour un proxy web NON demarre : socat s'est arrete (port $RELAIS_PORT deja pris ?). Le serveur demarre quand meme."
+    fi
+  fi
+fi
 
 [ -x "$BIN" ] || chmod +x "$BIN"
 echo "TeamKit : demarrage de MCGalaxy. Pour devenir proprietaire : /rank <ton pseudo ClassiCube> owner (ici, dans la console)."

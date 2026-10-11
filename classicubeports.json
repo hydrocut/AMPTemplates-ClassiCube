@@ -5,5 +5,12 @@
         "Ref": "GamePort",
         "Name": "Port du jeu",
         "Description": "Seul port a ouvrir, en TCP. 25565 est le port par defaut de MCGalaxy (cle port de properties/server.properties, recopiee a chaque demarrage). Il sert au jeu ClassiCube comme au client navigateur de classicube.net, qui passe par le relais websocket de classicube.net : rien d'autre a ouvrir."
+    },
+    {
+        "Protocol": "TCP",
+        "Port": 25566,
+        "Ref": "RelayPort",
+        "Name": "Relais du proxy web",
+        "Description": "Utilise seulement si la case Relais pour un proxy web est cochee. A NE JAMAIS OUVRIR AU MONDE : seul un proxy (nginx) de la meme machine doit le joindre. Le serveur croit l'adresse IP que lui annonce toute connexion arrivee par ce port (en-tete X-Real-IP) : ouvert, n'importe qui choisirait l'IP vue par le serveur (contournement des bannissements par IP). Bloquer ce port dans le pare-feu de l'hote (chaine DOCKER-USER : les ports publies par Docker passent avant ufw)."
     }
 ]

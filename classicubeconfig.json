@@ -202,5 +202,50 @@
             "False": "false",
             "True": "true"
         }
+    },
+    {
+        "DisplayName": "Service de connexion supplémentaire (adresse)",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Connexion par un autre site:login:5",
+        "Description": "VIDE (défaut) = rien ne change : seuls les comptes classicube.net entrent. Rempli = adresse https://… d'un site à vous (par exemple la page de jeu TeamKit) qui délivre ses propres comptes : le serveur lui envoie aussi son « heartbeat » (toutes les 30 s, avec un sel tiré à chaque démarrage) et accepte en plus les joueurs dont le mppass vaut md5(sel + pseudo) pour ce site. Écrit dans HeartbeatURL (server.properties) après celle de classicube.net, à chaque démarrage. ATTENTION : MCGalaxy n'accepte dans cette adresse que les lettres sans accent, les chiffres, « : », « / » et « . » (ni tiret, ni _, ni ?, =, &) ; sinon le service est ignoré avec un message dans la console.",
+        "Keywords": "connexion,authentification,heartbeat,service,compte,site,web,teamkit,mppass",
+        "FieldName": "service_connexion",
+        "InputType": "text",
+        "ParamFieldName": "service_connexion",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "",
+        "Placeholder": "https://exemple.fr/classicube/heartbeat",
+        "Required": false,
+        "EnumValues": {}
+    },
+    {
+        "DisplayName": "Suffixe des pseudos de ce service",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Connexion par un autre site:login:5",
+        "Description": "Ajouté au pseudo des joueurs entrés par le service ci-dessus (name-suffix de properties/authservices.properties) : « Kevin » de votre site devient « Kevin+ », distinct de « Kevin » de classicube.net (rangs, cartes et bannissements séparés ; /rank Kevin+ builder). 1 à 3 caractères parmi lettres, chiffres, + ~ _ . -, dont au moins un + ~ ou - (impossibles dans un pseudo classicube.net : sinon un compte de votre site pourrait prendre le pseudo d'un joueur classicube.net, staff compris). « + » est recommandé : MCGalaxy le connaît déjà. Ignoré si le service est vide.",
+        "Keywords": "suffixe,suffix,pseudo,name-suffix,service,connexion",
+        "FieldName": "suffixe_service",
+        "InputType": "text",
+        "ParamFieldName": "suffixe_service",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "+",
+        "Required": false,
+        "EnumValues": {}
+    },
+    {
+        "DisplayName": "Relais pour un proxy web",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Connexion par un autre site:login:5",
+        "Description": "Décoché (défaut) = rien ne change. Coché = au démarrage, un petit relais (socat) écoute sur le port « Relais du proxy web » (onglet Réseau, 25566 par défaut) et renvoie chaque connexion vers le serveur en local. Sert à une page de jeu web à vous : le nginx de la même machine (wss://) passe par ce relais pour que le serveur voie la vraie adresse IP des joueurs du navigateur (en-tête X-Real-IP). Ce port ne doit JAMAIS être ouvert au monde : seul un proxy de la même machine doit le joindre (règle de pare-feu, voir le README du template). Une instance créée avant cette option n'a pas ce port : il faut la recréer.",
+        "Keywords": "relais,proxy,nginx,web,websocket,wss,navigateur,socat,x-real-ip",
+        "FieldName": "relais_web",
+        "InputType": "checkbox",
+        "ParamFieldName": "relais_web",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "false",
+        "EnumValues": {
+            "False": "false",
+            "True": "true"
+        }
     }
 ]

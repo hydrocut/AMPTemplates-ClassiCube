@@ -17,6 +17,11 @@ Contrôle du template avant de le pousser (même rôle que ceux de PokerTH, LMP,
    complet en CRLF, valeurs avec espaces, &, apostrophe, $( ), backticks, retour à la ligne,
    accents, valeurs invalides, joueurs maximum non remplacé par AMP ; puis lancement d'un
    faux serveur (exec, TERM=dumb, console d'AMP sur son entrée) ;
+4b. service de connexion supplémentaire : l'adresse et le suffixe arrivent dans HeartbeatURL
+   et properties/authservices.properties (relus comme MCGalaxy : PropertiesFile.cs,
+   AuthService.cs, ConfigStringAttribute.Constrain), valeurs piégées refusées ; relais pour
+   un proxy web : port validé, socat lancé sous setpriv --pdeathsig avant l'exec du serveur
+   (faux setpriv et faux socat), jamais lancé quand la case est décochée ;
 5. les fichiers téléchargés à l'Update existent dans scripts/, à l'URL du dépôt du manifest,
    fins de ligne LF, `bash -n`, `perl -c`, aucun {{$...}} ni eval dans les fichiers livrés ;
 6. l'installeur, avec un faux curl : bonne adresse (stable / développement / valeur du
@@ -56,7 +61,12 @@ CORRESPONDANCE = {
     'proprietaire_affiche': 'server-owner',
     'message_accueil': 'motd',
     'nom_serveur': 'server-name',
+    'relais_web': None,                   # lu par le script bash (socat)
+    'service_connexion': 'HeartbeatURL',  # + properties/authservices.properties
+    'suffixe_service': None,              # name-suffix de properties/authservices.properties
 }
+CCNET = 'http://www.classicube.net/heartbeat.jsp'
+NOUVEAUX = ('relais_web', 'service_connexion', 'suffixe_service')
 # Thèmes enregistrés par MCGalaxy 1.9.5.3 sans droit Admin (SimpleGen, RealisticMapGen,
 # ClassicGenerator, fCraftMapGen ; « Random » de fCraft et les thèmes « Advanced » exclus).
 THEMES = {'flat', 'classic', 'forest', 'island', 'mountains', 'ocean', 'desert', 'hell', 'archipelago',
@@ -117,10 +127,13 @@ refs = {p['Ref'] for p in ports}
 if cles.get('App.PrimaryApplicationPortRef') not in refs:
     soucis.append('PrimaryApplicationPortRef ne correspond à aucun port')
 cmd = cles.get('App.CommandLineArgs', '')
-if cmd != '"{{$FullBaseDir}}lancer-classicube.sh" {{$%s}} {{$MaxUsers}}' % cles.get('App.PrimaryApplicationPortRef'):
+if cmd != '"{{$FullBaseDir}}lancer-classicube.sh" {{$%s}} {{$MaxUsers}} {{$RelayPort}}' % cles.get('App.PrimaryApplicationPortRef'):
     soucis.append('ligne de commande inattendue : %s' % cmd)
-if len(ports) != 1 or ports[0]['Protocol'] != 'TCP' or ports[0]['Port'] != 25565:
-    soucis.append('un seul port attendu : 25565 en TCP')
+if [(p['Ref'], p['Port'], p['Protocol']) for p in ports] != [('GamePort', 25565, 'TCP'), ('RelayPort', 25566, 'TCP')]:
+    soucis.append('ports attendus : GamePort 25565/TCP puis RelayPort 25566/TCP')
+elif 'JAMAIS' not in ports[1]['Description'] or 'X-Real-IP' not in ports[1]['Description'] \
+        or 'DOCKER-USER' not in ports[1]['Description'] or ports[1]['Name'] != 'Relais du proxy web':
+    soucis.append('RelayPort : nom « Relais du proxy web » et description « JAMAIS ouvert au monde » (X-Real-IP, DOCKER-USER) attendus')
 print('ok   ports                        %s' % ', '.join('%s %s/%s' % (p['Ref'], p['Port'], p['Protocol']) for p in ports))
 ATTENDUES = ['App.SupportsUniversalSleep', 'App.WakeupMode', 'App.ApplicationReadyMode', 'Console.FilterMatchRegex',
              'Console.FilterMatchReplacement', 'Console.ThrowawayMessageRegex', 'Console.AppReadyRegex',
@@ -148,8 +161,8 @@ if cles.get('Meta.URL') != manifest['url']:
 if cles.get('Meta.SpecificDockerImage') != 'cubecoders/ampbase:debian' or cles.get('Meta.ContainerPolicy') != 'Required':
     soucis.append('conteneur cubecoders/ampbase:debian obligatoire')
 paquets = json.loads(cles.get('Meta.ExtraContainerPackages', '[]'))
-if sorted(paquets) != ['ca-certificates', 'curl']:
-    soucis.append('ExtraContainerPackages : seulement curl et ca-certificates (le serveur n’a besoin de rien) : %r' % paquets)
+if sorted(paquets) != ['ca-certificates', 'curl', 'socat']:
+    soucis.append('ExtraContainerPackages : curl, ca-certificates (Update) et socat (relais) seulement : %r' % paquets)
 # Identifiants neufs : jamais celui d'un autre template TeamKit.
 if not est_uuid(cles.get('Meta.AppConfigId', '')) or not est_uuid(manifest.get('id', '')):
     soucis.append('Meta.AppConfigId et l’id du manifest doivent être des UUID')
@@ -171,7 +184,7 @@ m = re.search(r"^PERL_REGLAGES='\n(.*?)\n'$", lanceur, re.S | re.M)
 perl = m.group(1) if m else ''
 if not perl or "'" in perl:
     soucis.append('code perl du lanceur introuvable, ou avec une apostrophe (il est entre apostrophes pour bash)')
-table = dict(re.findall(r'^\s+([a-z_]+)\s+=>\s+\[(undef|"[a-z-]+")', perl, re.M))
+table = dict(re.findall(r'^\s+([a-z_]+)\s+=>\s+\[(undef|"[A-Za-z-]+")', perl, re.M))
 table = {k: (None if v == 'undef' else v.strip('"')) for k, v in table.items()}
 dans_modele = re.findall(r'\{\{([^}]*)\}\}', modele)
 params = {}
@@ -216,6 +229,28 @@ if params['verifier_pseudos']['DefaultValue'] != 'true' or 'N\'IMPORTE QUI' not 
     soucis.append('vérification des pseudos : cochée par défaut, avec l’avertissement')
 if params['version_dev']['DefaultValue'] != 'false' or params['liste_publique']['DefaultValue'] != 'true':
     soucis.append('défauts attendus : version stable, liste publique')
+lignes_modele = [l.split('=', 1)[0] for l in modele.splitlines() if '=' in l and not l.startswith('#')]
+for p in NOUVEAUX:
+    c = params.get(p, {})
+    if not c.get('Subcategory', '').startswith('Connexion par un autre site:') or c.get('Required', False):
+        soucis.append('%s : sous-catégorie « Connexion par un autre site », jamais obligatoire' % p)
+    # Avant tout champ texte libre dans le modèle : une ligne « cle=... » glissée dans un
+    # texte sur plusieurs lignes ne peut pas passer avant la vraie (la première compte).
+    if p in lignes_modele and any(lignes_modele.index(p) > lignes_modele.index(x)
+                                  for x in params if params[x]['InputType'] == 'text' and x not in NOUVEAUX):
+        soucis.append('%s doit venir avant les champs texte dans le modèle' % p)
+if (params.get('service_connexion', {}).get('DefaultValue'), params.get('suffixe_service', {}).get('DefaultValue'),
+        params.get('relais_web', {}).get('DefaultValue')) != ('', '+', 'false'):
+    soucis.append('défauts attendus : service vide, suffixe « + », relais décoché')
+if 'JAMAIS' not in params.get('relais_web', {}).get('Description', ''):
+    soucis.append('relais_web : dire que le port ne doit JAMAIS être ouvert au monde')
+readme = lire('README.md')
+for besoin in ('## Play from your own web page', 'proxy_http_version 1.1;', 'proxy_set_header Upgrade $http_upgrade;',
+               'proxy_set_header Connection "upgrade";', 'proxy_set_header X-Real-IP $remote_addr;',
+               'proxy_read_timeout 1h;', 'proxy_pass http://127.0.0.1:25566;', 'DOCKER-USER', 'never** be opened',
+               'Recreate the\ninstance', 'recréer l\'instance', 'verify-lan-ips = true'):
+    if besoin not in readme:
+        soucis.append('README : %r absent (web page, nginx, pare-feu, instance à recréer)' % besoin)
 if '/rank' not in params['proprietaire_affiche']['Description'] or '/rank' not in cles.get('Meta.Description', ''):
     soucis.append('expliquer « /rank <pseudo> owner » (champ propriétaire et description du template)')
 meta = data[NOM + 'metaconfig.json'][0]
@@ -250,7 +285,8 @@ def lire_props(chemin):
 
 bash = shutil.which('bash')
 defauts = {p: str(c.get('DefaultValue', '')) for p, c in params.items()}
-DEF_PROPS = {'public': 'true', 'verify-names': 'true', 'max-guests': '30', 'default-rank': 'guest',
+DEF_PROPS = {'public': 'true', 'verify-names': 'true', 'verify-lan-ips': 'true', 'heartbeaturl': CCNET,
+             'max-guests': '30', 'default-rank': 'guest',
              'agree-to-rules-on-entry': 'false', 'default-mapgen-theme': 'flat', 'profanity-filter': 'false',
              'server-owner': 'TeamKit', 'motd': defauts['message_accueil'],
              'server-name': '[FR] TeamKit - ClassiCube', 'port': '25565', 'max-players': '32'}
@@ -381,6 +417,274 @@ if bash:
 else:
     print('--   aller-retour réel            pas de bash ici, non vérifié')
 
+# ── 4b. service de connexion supplémentaire et relais pour un proxy web ──────
+# HeartbeatURL n'accepte que lettres, chiffres et : / . , (ServerConfig.cs, 1.9.5.3) :
+# MCGalaxy remet l'adresse de classicube.net seule au moindre autre caractère.
+PERMIS_HB = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:/.,')
+TK = 'https://teamkit.fr/classicube/heartbeat'
+
+
+def lire_auth(chemin):
+    """Lecture comme MCGalaxy (AuthService.UpdateList + PropertiesFile.Read) : lignes vides
+    et # ignorées, premier '=', clé et valeur rognées ; une ligne URL ouvre un service
+    (GetOrCreate : même adresse sans casse = même service)."""
+    services, cur = {}, None
+    with io.open(chemin, encoding='utf-8', newline='') as f:
+        for ligne in f.read().split('\n'):
+            if not ligne or ligne[0] == '#' or '=' not in ligne:
+                continue
+            k, v = ligne.split('=', 1)
+            k, v = k.strip().lower(), v.strip()
+            if k == 'url':
+                cur = services.setdefault(v.lower(), {'url': v, 'name-suffix': '', 'skin-prefix': '', 'mojang-auth': 'False'})
+            elif cur is not None and k in ('name-suffix', 'skin-prefix', 'mojang-auth'):
+                cur[k] = v
+    return list(services.values())
+
+
+def lancer(valeurs, args, depart=None, depart_auth=None, essai=True, outils=None, env_plus=None):
+    """Lance le vrai lanceur dans un dossier jetable ; valeurs=None : pas de fichier rendu."""
+    dossier = tempfile.mkdtemp(prefix='tk-classicube-')
+    inst = os.path.join(dossier, 'classicube')
+    os.makedirs(os.path.join(inst, 'properties'))
+    with io.open(os.path.join(inst, 'lancer-classicube.sh'), 'w', encoding='utf-8', newline='\n') as f:
+        f.write(lanceur)
+    if valeurs is not None:
+        vals = dict(defauts)
+        vals.update(valeurs)
+        with io.open(os.path.join(inst, 'reglages-classicube.txt'), 'w', encoding='utf-8', newline='\n') as f:
+            f.write(rendre(vals))
+    if depart is not None:
+        with io.open(os.path.join(inst, 'properties', 'server.properties'), 'w', encoding='utf-8', newline='') as f:
+            f.write(depart)
+    if depart_auth is not None:
+        with io.open(os.path.join(inst, 'properties', 'authservices.properties'), 'w', encoding='utf-8', newline='') as f:
+            f.write(depart_auth)
+    env = dict(os.environ)
+    env.pop('TK_ESSAI_REGLAGES', None)
+    if essai:
+        env['TK_ESSAI_REGLAGES'] = '1'
+    if outils:
+        env['PATH'] = outils + os.pathsep + env.get('PATH', '')
+    env.update(env_plus or {})
+    r = subprocess.run([bash, '-c', 'echo "lanceur:$$"; exec bash "$0" "$@"', os.path.join(inst, 'lancer-classicube.sh')] + args,
+                       input=b'/shutdown\n', capture_output=True, timeout=60, env=env, cwd=dossier)
+    return dossier, inst, r.returncode, r.stdout.decode('utf-8', 'replace') + r.stderr.decode('utf-8', 'replace')
+
+
+# Un authservices.properties laissé par MCGalaxy, avec un ancien service et un réglage à la main.
+AUTH_MCG = ('# Authentication services configuration\n\nURL = http://www.classicube.net/heartbeat.jsp\nname-suffix = \n'
+            'skin-prefix = \nmojang-auth = False\n\nURL = https://ancien.example/hb\nname-suffix = ~\nskin-prefix = x\n'
+            'mojang-auth = True\n\n')
+REFUS = 'service de connexion supplementaire IGNORE'
+ESSAIS_SERVICE = [
+    # (nom, valeurs, server.properties de départ, authservices de départ, HeartbeatURL attendu,
+    #  services attendus [(adresse, suffixe)] (None = fichier jamais écrit), texte attendu dans la console)
+    ('service vide (défaut)', {}, None, None, CCNET, [(CCNET, '')], None),
+    ('service TeamKit, suffixe +', {'service_connexion': TK}, None, None,
+     CCNET + ',' + TK, [(CCNET, ''), (TK, '+')], 'pseudos de ce service suivis de "+"'),
+    ('port, sous-domaine, .php, suffixe ~tk', {'service_connexion': 'https://Play.TeamKit.fr:8443/cc/hb.php', 'suffixe_service': '~tk'},
+     None, None, CCNET + ',https://Play.TeamKit.fr:8443/cc/hb.php', [(CCNET, ''), ('https://Play.TeamKit.fr:8443/cc/hb.php', '~tk')], None),
+    ('espaces autour, CRLF de MCGalaxy, ancien service retiré', {'service_connexion': '  ' + TK + ' \t', 'suffixe_service': ' - '},
+     MCG, AUTH_MCG, CCNET + ',' + TK, [(CCNET, ''), (TK, '-')], None),
+    ('service vidé : l’ancien disparaît', {'service_connexion': ''}, MCG.replace(CCNET, CCNET + ',' + TK), AUTH_MCG,
+     CCNET, [(CCNET, '')], None),
+    ('ancienne instance : variables laissées par AMP', {p: '{{%s}}' % p for p in NOUVEAUX},
+     'HeartbeatURL = ' + CCNET + ',' + TK + '\n', AUTH_MCG, CCNET + ',' + TK, None, 'reglages absents'),
+    ('pas de reglages-classicube.txt : rien touché', None, 'HeartbeatURL = ' + CCNET + ',' + TK + '\n', AUTH_MCG,
+     CCNET + ',' + TK, None, None),
+    ('piégé : ? & $( )', {'service_connexion': 'https://teamkit.fr/hb?x=1&y=$(touch pirate1)`touch pirate2`'}, MCG, None,
+     CCNET, [(CCNET, '')], REFUS),
+    ('tiret dans le nom de domaine', {'service_connexion': 'https://team-kit.fr/hb'}, None, None, CCNET, [(CCNET, '')], 'caractere "-" interdit'),
+    ('soulignement', {'service_connexion': 'https://teamkit.fr/classicube_hb'}, None, None, CCNET, [(CCNET, '')], 'caractere "_" interdit'),
+    ('http:// au lieu de https://', {'service_connexion': 'http://teamkit.fr/hb'}, None, None, CCNET, [(CCNET, '')], 'commencer par https://'),
+    ('deux adresses (virgule)', {'service_connexion': TK + ',https://autre.example/hb'}, None, None, CCNET, [(CCNET, '')], 'caractere "," interdit'),
+    ('espace au milieu', {'service_connexion': 'https://teamkit.fr/a b'}, None, None, CCNET, [(CCNET, '')], 'caractere espace interdit'),
+    ('accent', {'service_connexion': 'https://téamkit.fr/hb'}, None, None, CCNET, [(CCNET, '')], 'U+00E9'),
+    ('retour à la ligne + fausse clé', {'service_connexion': TK + '\nHeartbeatURL=https://pirate.example/hb\nverify-names=false'},
+     None, None, CCNET, [(CCNET, '')], REFUS),
+    ('classicube.net en double', {'service_connexion': 'https://www.classicube.net/heartbeat.jsp'}, None, None, CCNET, [(CCNET, '')],
+     'deja le service de classicube.net'),
+    ('domaine sans point', {'service_connexion': 'https://localhost/hb'}, None, None, CCNET, [(CCNET, '')], 'mal formee'),
+    ('port 99999', {'service_connexion': 'https://teamkit.fr:99999/hb'}, None, None, CCNET, [(CCNET, '')], 'mal formee'),
+    ('trop longue', {'service_connexion': 'https://teamkit.fr/' + 'a' * 200}, None, None, CCNET, [(CCNET, '')], 'trop longue'),
+    ('suffixe _ (pseudo classicube.net possible)', {'service_connexion': TK, 'suffixe_service': '_'}, None, None,
+     CCNET + ',' + TK, [(CCNET, ''), (TK, '+')], 'suffixe des pseudos "_" refuse'),
+    ('suffixe trop long', {'service_connexion': TK, 'suffixe_service': '+abc'}, None, None, CCNET + ',' + TK, [(CCNET, ''), (TK, '+')], 'refuse'),
+    ('suffixe vide', {'service_connexion': TK, 'suffixe_service': ''}, None, None, CCNET + ',' + TK, [(CCNET, ''), (TK, '+')], 'refuse'),
+    ('suffixe accentué', {'service_connexion': TK, 'suffixe_service': 'é+'}, None, None, CCNET + ',' + TK, [(CCNET, ''), (TK, '+')], 'refuse'),
+    ('suffixe piégé', {'service_connexion': TK, 'suffixe_service': '+\nverify-names=false\n$(touch pirate3)'}, None, None,
+     CCNET + ',' + TK, [(CCNET, ''), (TK, '+')], 'refuse'),
+    ('vérification coupée : avertissement', {'service_connexion': TK, 'verifier_pseudos': 'false'}, None, None,
+     CCNET + ',' + TK, [(CCNET, ''), (TK, '+')], 'le service supplementaire ne sert a rien'),
+]
+if bash:
+    n = 0
+    for nom_essai, valeurs, depart, depart_auth, hb, blocs, message in ESSAIS_SERVICE:
+        dossier = None
+        try:
+            dossier, inst, code, sortie = lancer(valeurs, ['25565', '32', '25566'], depart, depart_auth)
+            n += 1
+            if code != 0:
+                soucis.append('service « %s » : code %d : %s' % (nom_essai, code, sortie.strip()))
+                continue
+            chemin = os.path.join(inst, 'properties', 'server.properties')
+            props = lire_props(chemin)
+            brut = io.open(chemin, encoding='utf-8', newline='').read()
+            if props.get('heartbeaturl') != hb:
+                soucis.append('service « %s » : HeartbeatURL = %r au lieu de %r' % (nom_essai, props.get('heartbeaturl'), hb))
+            if sum(1 for l in brut.splitlines() if l.strip().lower().startswith('heartbeaturl')) != 1:
+                soucis.append('service « %s » : une seule ligne HeartbeatURL attendue' % nom_essai)
+            if set(props.get('heartbeaturl', '')) - PERMIS_HB:
+                soucis.append('service « %s » : HeartbeatURL contient un caractère que MCGalaxy refuse' % nom_essai)
+            if props.get('verify-names') == 'false' and valeurs and valeurs.get('verifier_pseudos') != 'false':
+                soucis.append('service « %s » : verify-names coupé par une valeur glissée' % nom_essai)
+            auth = os.path.join(inst, 'properties', 'authservices.properties')
+            if blocs is None:
+                if depart_auth is not None and io.open(auth, encoding='utf-8', newline='').read() != depart_auth:
+                    soucis.append('service « %s » : authservices.properties modifié sans réglages' % nom_essai)
+            elif not os.path.isfile(auth):
+                soucis.append('service « %s » : authservices.properties absent' % nom_essai)
+            else:
+                texte = io.open(auth, encoding='utf-8', newline='').read()
+                lus = lire_auth(auth)
+                if [(s['url'], s['name-suffix']) for s in lus] != blocs:
+                    soucis.append('service « %s » : authservices = %r au lieu de %r' % (nom_essai, [(s['url'], s['name-suffix']) for s in lus], blocs))
+                if any((s['skin-prefix'], s['mojang-auth']) != ('', 'False') for s in lus):
+                    soucis.append('service « %s » : skin-prefix vide et mojang-auth = False attendus' % nom_essai)
+                if {s['url'].lower() for s in lus} != {u.lower() for u in props.get('heartbeaturl', '').split(',')}:
+                    soucis.append('service « %s » : adresses de HeartbeatURL et de authservices.properties différentes' % nom_essai)
+                if not texte.startswith('# Authentication services configuration\n') or '\r' in texte \
+                        or '#mojang-auth = boolean' not in texte or "Mojang's" not in texte:
+                    soucis.append('service « %s » : en-tête de MCGalaxy attendu, fins de ligne LF' % nom_essai)
+                if os.path.exists(auth + '.tmp'):
+                    soucis.append('service « %s » : fichier temporaire laissé' % nom_essai)
+            if message and message not in sortie:
+                soucis.append('service « %s » : message attendu « %s » absent : %r' % (nom_essai, message, sortie))
+            if not message and REFUS in sortie:
+                soucis.append('service « %s » : refusé à tort : %r' % (nom_essai, sortie))
+            for p in glob.glob(os.path.join(dossier, '**', 'pirate*'), recursive=True):
+                soucis.append('service « %s » : une valeur a été exécutée par le shell (%s)' % (nom_essai, p))
+        except Exception as e:
+            soucis.append('service « %s » : %s' % (nom_essai, e))
+        finally:
+            if dossier:
+                shutil.rmtree(dossier, ignore_errors=True)
+    print('ok   service de connexion         %d essais : HeartbeatURL + authservices.properties relus comme MCGalaxy' % n)
+
+    # Relais : contrôle du port (mode essai, socat jamais lancé).
+    PAS_ARRIVE = "n'est pas arrive sur la ligne de commande"
+    ESSAIS_RELAIS = [
+        ('coché, bon port', 'true', ['25565', '32', '25566'], None),
+        ('coché, port du jeu', 'true', ['25565', '32', '25565'], 'est celui du jeu'),
+        ('coché, port du jeu écrit 08080', 'true', ['8080', '32', '08080'], 'est celui du jeu'),
+        ('coché, port 0', 'true', ['25565', '32', '0'], PAS_ARRIVE),
+        ('coché, port 65536', 'true', ['25565', '32', '65536'], PAS_ARRIVE),
+        ('coché, RelayPort non remplacé', 'true', ['25565', '32', '{{$RelayPort}}'], PAS_ARRIVE),
+        ('coché, instance ancienne (pas de 3e argument)', 'true', ['25565', '32'], PAS_ARRIVE),
+        ('coché, port piégé', 'true', ['25565', '32', '25566;touch pirate5'], PAS_ARRIVE),
+        ('coché en majuscules', 'True', ['25565', '32', '25565'], 'est celui du jeu'),
+        ('décoché, port absent', 'false', ['25565', '32'], None),
+        ('valeur piégée', '$(touch pirate6)', ['25565', '32', '25565'], None),
+    ]
+    for nom_essai, valeur, args, message in ESSAIS_RELAIS:
+        dossier = None
+        try:
+            dossier, inst, code, sortie = lancer({'relais_web': valeur}, args)
+            if code != 0:
+                soucis.append('relais « %s » : code %d : %s' % (nom_essai, code, sortie))
+            if message and message not in sortie:
+                soucis.append('relais « %s » : message attendu « %s » absent : %r' % (nom_essai, message, sortie))
+            if not message and 'relais pour un proxy web' in sortie:
+                soucis.append('relais « %s » : message inattendu : %r' % (nom_essai, sortie))
+            for p in glob.glob(os.path.join(dossier, '**', 'pirate*'), recursive=True):
+                soucis.append('relais « %s » : une valeur a été exécutée par le shell (%s)' % (nom_essai, p))
+        finally:
+            if dossier:
+                shutil.rmtree(dossier, ignore_errors=True)
+
+    # Relais : vrai démarrage avec un faux serveur, un faux setpriv et un faux socat.
+    def outils_relais(dossier, avec_socat=True):
+        outils = os.path.join(dossier, 'outils')
+        os.makedirs(outils)
+        scripts = {'setpriv': '#!/bin/bash\nprintf "%s\\n" "$@" > "$TK_JOURNAL_RELAIS.setpriv"\n'
+                              'while [ "$1" != "--" ]; do shift; done\nshift\nexec "$@"\n'}
+        if avec_socat:
+            # L'entrée du relais doit être /dev/null : s'il lisait la console d'AMP, il
+            # volerait les commandes (/shutdown) du serveur.
+            scripts['socat'] = ('#!/bin/bash\nprintf "%s\\n" "$@" > "$TK_JOURNAL_RELAIS.socat"\n'
+                                '[ "$TK_SOCAT" = meurt ] && exit 1\n'
+                                'if IFS= read -r x; then echo "$x" > "$TK_JOURNAL_RELAIS.entree"; fi\n'
+                                'cd / && exec sleep 3 </dev/null >/dev/null 2>&1\n')
+        for nom_outil, contenu in scripts.items():
+            with io.open(os.path.join(outils, nom_outil), 'w', encoding='utf-8', newline='\n') as f:
+                f.write(contenu)
+            os.chmod(os.path.join(outils, nom_outil), 0o755)
+        return outils
+
+    def demarrer(relais, args, socat='vit', avec_socat=True):
+        base = tempfile.mkdtemp(prefix='tk-classicube-outils-')
+        journal = os.path.join(base, 'relais')
+        outils = outils_relais(base, avec_socat)
+        try:
+            # Le faux serveur est posé avant le lancement (le lanceur le cherche dans son dossier).
+            vals = dict(defauts, relais_web=relais)
+            d = tempfile.mkdtemp(prefix='tk-classicube-')
+            inst = os.path.join(d, 'classicube')
+            os.makedirs(inst)
+            with io.open(os.path.join(inst, 'lancer-classicube.sh'), 'w', encoding='utf-8', newline='\n') as f:
+                f.write(lanceur)
+            with io.open(os.path.join(inst, 'reglages-classicube.txt'), 'w', encoding='utf-8', newline='\n') as f:
+                f.write(rendre(vals))
+            with io.open(os.path.join(inst, 'MCGalaxy'), 'w', encoding='utf-8', newline='\n') as f:
+                f.write('#!/bin/bash\nIFS= read -r cmd\necho "faux:$cmd:$$"\n')
+            env = dict(os.environ, TK_JOURNAL_RELAIS=journal, TK_SOCAT=socat)
+            env.pop('TK_ESSAI_REGLAGES', None)
+            env['PATH'] = outils + os.pathsep + env.get('PATH', '')
+            r = subprocess.run([bash, '-c', 'echo "lanceur:$$"; exec bash "$0" "$@"', os.path.join(inst, 'lancer-classicube.sh')] + args,
+                               input=b'/shutdown\n', capture_output=True, timeout=60, env=env, cwd=d)
+            sortie = r.stdout.decode('utf-8', 'replace') + r.stderr.decode('utf-8', 'replace')
+            lu = {}
+            for suffixe in ('setpriv', 'socat', 'entree'):
+                if os.path.exists(journal + '.' + suffixe):
+                    lu[suffixe] = io.open(journal + '.' + suffixe, encoding='utf-8').read().splitlines()
+            mf = re.search(r'faux:([^:]*):(\d+)', sortie)
+            ml = re.search(r'lanceur:(\d+)', sortie)
+            serveur_ok = bool(mf and ml and mf.group(1) == '/shutdown' and mf.group(2) == ml.group(1))
+            shutil.rmtree(d, ignore_errors=True)
+            return r.returncode, sortie, lu, serveur_ok
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    SOCAT = ['socat', 'TCP-LISTEN:25600,fork,reuseaddr,nodelay', 'TCP:127.0.0.1:25599,nodelay']
+    code, sortie, lu, serveur_ok = demarrer('true', ['25599', '16', '25600'])
+    if code or not serveur_ok:
+        soucis.append('relais coché : le serveur doit toujours remplacer le lanceur (exec) et recevoir /shutdown : %r' % sortie)
+    if lu.get('setpriv') != ['--pdeathsig', 'TERM', '--'] + SOCAT or lu.get('socat') != SOCAT[1:]:
+        soucis.append('relais coché : socat attendu sous setpriv --pdeathsig TERM : %r' % lu)
+    if 'entree' in lu:
+        soucis.append('relais coché : socat a lu la console d’AMP (%r) : son entrée doit être /dev/null' % lu['entree'])
+    if 'relais pour un proxy web actif : port 25600 -> 127.0.0.1:25599' not in sortie:
+        soucis.append('relais coché : message « relais actif » absent : %r' % sortie)
+    code, sortie, lu, serveur_ok = demarrer('true', ['25599', '16', '02560'])
+    if lu.get('socat') != ['TCP-LISTEN:2560,fork,reuseaddr,nodelay', SOCAT[2]]:
+        soucis.append('relais, port écrit 02560 : 2560 attendu (pas d’octal) : %r' % lu)
+    code, sortie, lu, serveur_ok = demarrer('false', ['25599', '16', '25600'])
+    if code or not serveur_ok or lu or 'relais' in sortie:
+        soucis.append('relais décoché : socat ne doit pas être lancé : %r %r' % (lu, sortie))
+    code, sortie, lu, serveur_ok = demarrer('true', ['25599', '16', '25599'])
+    if code or not serveur_ok or lu:
+        soucis.append('relais sur le port du jeu : socat ne doit pas être lancé, le serveur démarre : %r %r' % (lu, sortie))
+    code, sortie, lu, serveur_ok = demarrer('true', ['25599', '16', '25600'], socat='meurt')
+    if code or not serveur_ok or "socat s'est arrete" not in sortie:
+        soucis.append('relais, socat qui s’arrête : message attendu et serveur démarré : %r' % sortie)
+    if not shutil.which('socat'):
+        code, sortie, lu, serveur_ok = demarrer('true', ['25599', '16', '25600'], avec_socat=False)
+        if code or not serveur_ok or 'socat manque' not in sortie:
+            soucis.append('relais sans socat : message « socat manque » attendu, serveur démarré : %r' % sortie)
+    print('ok   relais pour un proxy web     %d contrôles du port, socat sous setpriv avant exec, entrée /dev/null' % len(ESSAIS_RELAIS))
+
+
 # ── 5. fichiers téléchargés à l'Update, scripts ──────────────────────────────
 depot = manifest['url'].replace('https://github.com/', '')
 fetch = [e for e in updates if e['UpdateSource'] == 'FetchURL']
@@ -432,7 +736,13 @@ if re.search(r'^\s*use (?!strict|warnings)', perl, re.M):
 for besoin, pourquoi in [
     ('export TERM=dumb', 'pas de codes couleur dans la console d’AMP'),
     ('exec "$BIN"', 'la console d’AMP doit arriver sur l’entrée du serveur'),
-    ('perl -e "$PERL_REGLAGES" "$REGLAGES" "$PROPS" "$PORT" "$JOUEURS"', 'valeurs passées en arguments, jamais dans du code'),
+    ('perl -e "$PERL_REGLAGES" "$REGLAGES" "$PROPS" "$PORT" "$JOUEURS" "$AUTH"', 'valeurs passées en arguments, jamais dans du code'),
+    ('rename("$auth.tmp", $auth)', 'authservices.properties remplacé en une fois'),
+    ('$ecrire{"verify-lan-ips"} = "true"', 'pseudos vérifiés aussi depuis le loopback et le réseau Docker'),
+    ('setpriv --pdeathsig TERM -- socat TCP-LISTEN:"$RELAIS_PORT",fork,reuseaddr', 'le relais meurt avec le serveur'),
+    ('TCP:127.0.0.1:"$PORT"', 'le relais doit arriver en loopback (seule origine dont MCGalaxy croit X-Real-IP)'),
+    # bash non interactif donne déjà /dev/null aux tâches de fond ; on l'écrit quand même.
+    (',nodelay </dev/null &', 'entrée du relais = /dev/null, jamais la console d’AMP'),
     ('App\\.MaxUsers=', 'repli si AMP ne remplace pas MaxUsers'),
     ('rename("$props.tmp", $props)', 'remplacement en une fois'),
 ]:
@@ -565,6 +875,11 @@ ESSAIS = [
     ('Console.UserLeaveRegex', '(15:50:02) hydro.cut disconnected (Server shutdown. Rejoin in 10 seconds.).', {'username': 'hydro.cut'}),
     ('Console.UserLeaveRegex', '(15:50:02) Bob_42 kicked (Kicked by (console): spam (ok)&S).', {'username': 'Bob_42'}),
     ('Console.UserLeaveRegex', ESC + '(15:50:02) Bob_42 kicked (' + ESC + 'You were kicked' + ESC + ').' + ESC, {'username': 'Bob_42'}),
+    # Joueurs entrés par le service supplémentaire : suffixe ajouté au pseudo (AuthService.AcceptPlayer).
+    ('Console.UserJoinRegex', '(15:44:10) Kevin+ [203.0.113.7] connected using ClassiCube 1.3.7 web.', {'username': 'Kevin+'}),
+    ('Console.UserJoinRegex', '(15:44:10) Abcdefghijklmnop~tk [203.0.113.7] connected using ClassiCube 1.3.7.', {'username': 'Abcdefghijklmnop~tk'}),
+    ('Console.UserLeaveRegex', '(15:50:02) Kevin+ disconnected (Disconnected).', {'username': 'Kevin+'}),
+    ('Console.UserLeaveRegex', '(15:50:02) hydro.cut-1 kicked (spam).', {'username': 'hydro.cut-1'}),
     ('Console.UpdateAvailableRegex', 'MCGalaxy update available! Update by replacing with the files from https://github.com/ClassiCube/MCGalaxy/tree/master/Uploads', {}),
 ]
 for cle, ligne, attendu in ESSAIS:
@@ -578,7 +893,9 @@ PIEGES = [
     ('Console.UserJoinRegex', '(15:43:58) Server URL found: http://www.classicube.net/server/play/0123456789abcdef/'),
     ('Console.UserJoinRegex', '(15:44:00) Bob: Kevin [1.2.3.4] connected using ClassiCube.'),
     ('Console.UserJoinRegex', '(15:44:00) Kevin_TK disconnected (Disconnected).'),
-    ('Console.UserJoinRegex', '(15:44:00) Abcdefghijklmnopq [127.0.0.1] connected using ClassiCube 1.3.6.'),
+    ('Console.UserJoinRegex', '(15:44:00) Abcdefghijklmnopqrst [127.0.0.1] connected using ClassiCube 1.3.6.'),
+    ('Console.UserJoinRegex', '(15:44:00) 127.0.0.1 is forwarding a connection from 203.0.113.7'),
+    ('Console.UserLeaveRegex', '(15:44:00) 127.0.0.1 is forwarding a connection from 203.0.113.7'),
     ('Console.UserJoinRegex', '(15:44:00) Kévin [127.0.0.1] connected using ClassiCube 1.3.6.'),
     ('Console.UserLeaveRegex', '(15:44:00) 203.0.113.7 disconnected.'),
     # Session jamais connectée (pseudo non vérifié, peut-être usurpé) : pas un départ.
