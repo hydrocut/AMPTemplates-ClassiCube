@@ -51,6 +51,7 @@ soucis = []
 # Réglage AMP -> clé de server.properties (None = utilisé seulement par l'Update).
 CORRESPONDANCE = {
     'version_dev': None,
+    'compilateur': None,                  # Update (forme Mono) + script bash (mono MCGalaxyCLI.exe)
     'liste_publique': 'public',
     'verifier_pseudos': 'verify-names',
     'places_invites': 'max-guests',
@@ -161,8 +162,10 @@ if cles.get('Meta.URL') != manifest['url']:
 if cles.get('Meta.SpecificDockerImage') != 'cubecoders/ampbase:debian' or cles.get('Meta.ContainerPolicy') != 'Required':
     soucis.append('conteneur cubecoders/ampbase:debian obligatoire')
 paquets = json.loads(cles.get('Meta.ExtraContainerPackages', '[]'))
-if sorted(paquets) != ['ca-certificates', 'curl', 'socat']:
-    soucis.append('ExtraContainerPackages : curl, ca-certificates (Update) et socat (relais) seulement : %r' % paquets)
+PAQUETS = ['ca-certificates', 'curl', 'libmono-system-data4.0-cil', 'libmono-system-runtime-serialization4.0-cil',
+           'libsqlite3-0', 'mono-mcs', 'mono-runtime', 'socat']
+if sorted(paquets) != PAQUETS:
+    soucis.append('ExtraContainerPackages : curl, ca-certificates (Update), socat (relais) et Mono (compilateur) seulement : %r' % paquets)
 # Identifiants neufs : jamais celui d'un autre template TeamKit.
 if not est_uuid(cles.get('Meta.AppConfigId', '')) or not est_uuid(manifest.get('id', '')):
     soucis.append('Meta.AppConfigId et l’id du manifest doivent être des UUID')
@@ -227,8 +230,8 @@ if set(params['rang_defaut']['EnumValues']) != RANGS:
     soucis.append('rang par défaut : guest, builder, advbuilder seulement')
 if params['verifier_pseudos']['DefaultValue'] != 'true' or 'N\'IMPORTE QUI' not in params['verifier_pseudos']['Description']:
     soucis.append('vérification des pseudos : cochée par défaut, avec l’avertissement')
-if params['version_dev']['DefaultValue'] != 'false' or params['liste_publique']['DefaultValue'] != 'true':
-    soucis.append('défauts attendus : version stable, liste publique')
+if params['version_dev']['DefaultValue'] != 'false' or params['liste_publique']['DefaultValue'] != 'true'         or params['compilateur']['DefaultValue'] != 'false':
+    soucis.append('défauts attendus : version stable, liste publique, serveur autonome (compilateur décoché)')
 lignes_modele = [l.split('=', 1)[0] for l in modele.splitlines() if '=' in l and not l.startswith('#')]
 for p in NOUVEAUX:
     c = params.get(p, {})
@@ -442,7 +445,7 @@ def lire_auth(chemin):
     return list(services.values())
 
 
-def lancer(valeurs, args, depart=None, depart_auth=None, essai=True, outils=None, env_plus=None):
+def lancer(valeurs, args, depart=None, depart_auth=None, essai=True, outils=None, env_plus=None, fichiers=None):
     """Lance le vrai lanceur dans un dossier jetable ; valeurs=None : pas de fichier rendu."""
     dossier = tempfile.mkdtemp(prefix='tk-classicube-')
     inst = os.path.join(dossier, 'classicube')
@@ -460,6 +463,9 @@ def lancer(valeurs, args, depart=None, depart_auth=None, essai=True, outils=None
     if depart_auth is not None:
         with io.open(os.path.join(inst, 'properties', 'authservices.properties'), 'w', encoding='utf-8', newline='') as f:
             f.write(depart_auth)
+    for nom_f, contenu in (fichiers or {}).items():
+        with io.open(os.path.join(inst, nom_f), 'w', encoding='utf-8', newline='\n') as f:
+            f.write(contenu)
     env = dict(os.environ)
     env.pop('TK_ESSAI_REGLAGES', None)
     if essai:
@@ -685,6 +691,47 @@ if bash:
     print('ok   relais pour un proxy web     %d contrôles du port, socat sous setpriv avant exec, entrée /dev/null' % len(ESSAIS_RELAIS))
 
 
+# ── 4c. case « Compilateur de plugins » : mono MCGalaxyCLI.exe, sinon le serveur autonome ──
+if bash:
+    outils_mono = tempfile.mkdtemp(prefix='tk-classicube-mono-')
+    try:
+        with io.open(os.path.join(outils_mono, 'mono'), 'w', encoding='utf-8', newline='\n') as f:
+            f.write('#!/bin/bash\nIFS= read -r cmd\necho "faux-mono:$1:$cmd:$$"\n')
+        os.chmod(os.path.join(outils_mono, 'mono'), 0o755)
+        AUTONOME = {'MCGalaxy': '#!/bin/bash\nIFS= read -r cmd\necho "faux:$cmd:$$"\n'}
+        NET = {'MCGalaxy_.dll': 'MZ', 'MCGalaxyCLI.exe': 'MZ'}
+        def essai_mono(compil, fichiers, avec_mono=True):
+            d, inst, code, sortie = lancer({'compilateur': compil}, ['25599', '16'], essai=False,
+                                           outils=outils_mono if avec_mono else None, fichiers=fichiers)
+            shutil.rmtree(d, ignore_errors=True)
+            ml = re.search(r'lanceur:(\d+)', sortie)
+            mm = re.search(r'faux-mono:([^:]*):([^:]*):(\d+)', sortie)
+            ma = re.search(r'faux:([^:]*):(\d+)', sortie)
+            return code, sortie, ml, mm, ma
+        code, sortie, ml, mm, ma = essai_mono('true', dict(AUTONOME, **NET))
+        if code or not (ml and mm and mm.group(1).endswith('/MCGalaxyCLI.exe') and mm.group(2) == '/shutdown' and mm.group(3) == ml.group(1)):
+            soucis.append('compilateur coché : exec mono MCGalaxyCLI.exe attendu (même processus, /shutdown reçu) : %r' % sortie)
+        code, sortie, ml, mm, ma = essai_mono('false', dict(AUTONOME, **NET))
+        if code or mm or not (ma and ma.group(1) == '/shutdown'):
+            soucis.append('compilateur décoché : le serveur autonome doit démarrer : %r' % sortie)
+        code, sortie, ml, mm, ma = essai_mono('true', AUTONOME)
+        if code or mm or not ma or 'lance Update' not in sortie or 'sans /pcompile' not in sortie:
+            soucis.append('compilateur coché sans MCGalaxyCLI.exe : message + serveur autonome attendus : %r' % sortie)
+        if not shutil.which('mono'):
+            code, sortie, ml, mm, ma = essai_mono('true', dict(AUTONOME, **NET), avec_mono=False)
+            if code or mm or not ma or 'Mono manque' not in sortie:
+                soucis.append('compilateur coché sans Mono : message + serveur autonome attendus : %r' % sortie)
+        code, sortie, ml, mm, ma = essai_mono('true', NET, avec_mono=False)
+        if shutil.which('mono') is None and (code != 1 or 'pas installe' not in sortie):
+            soucis.append('compilateur coché, ni Mono ni serveur autonome : erreur attendue : %r' % sortie)
+        code, sortie, ml, mm, ma = essai_mono('$(touch pirate)', dict(AUTONOME, **NET))
+        if code or mm or not ma:
+            soucis.append('compilateur piégé : comparé à true seulement, serveur autonome : %r' % sortie)
+        print('ok   compilateur de plugins       mono MCGalaxyCLI.exe en exec, repli sur le serveur autonome, valeur jamais exécutée')
+    finally:
+        shutil.rmtree(outils_mono, ignore_errors=True)
+
+
 # ── 5. fichiers téléchargés à l'Update, scripts ──────────────────────────────
 depot = manifest['url'].replace('https://github.com/', '')
 fetch = [e for e in updates if e['UpdateSource'] == 'FetchURL']
@@ -699,8 +746,8 @@ for e in fetch:
 if {e['UpdateSourceArgs'] for e in fetch} != {'AMP_reglages-classicube.txt', 'lancer-classicube.sh', 'installer-classicube.sh'}:
     soucis.append('l’Update doit déposer les deux scripts et le modèle des réglages')
 dernier = updates[-1]
-if dernier['UpdateSource'] != 'Executable' or dernier['UpdateSourceArgs'] != '"{{$FullBaseDir}}installer-classicube.sh" "{{$FullBaseDir}}" "{{version_dev}}"':
-    soucis.append('la dernière étape de l’Update doit lancer installer-classicube.sh avec la case version_dev')
+if dernier['UpdateSource'] != 'Executable' or dernier['UpdateSourceArgs'] != '"{{$FullBaseDir}}installer-classicube.sh" "{{$FullBaseDir}}" "{{version_dev}}" "{{compilateur}}"':
+    soucis.append('la dernière étape de l’Update doit lancer installer-classicube.sh avec les cases version_dev et compilateur')
 for nom in sorted(glob.glob(os.path.join(ICI, 'scripts', '*'))):
     rel = os.path.relpath(nom, ICI).replace('\\', '/')
     contenu = lire(rel)
@@ -736,6 +783,7 @@ if re.search(r'^\s*use (?!strict|warnings)', perl, re.M):
 for besoin, pourquoi in [
     ('export TERM=dumb', 'pas de codes couleur dans la console d’AMP'),
     ('exec "$BIN"', 'la console d’AMP doit arriver sur l’entrée du serveur'),
+    ('exec mono "$ICI/MCGalaxyCLI.exe"', 'forme Mono : même processus, la console d’AMP arrive sur l’entrée du serveur'),
     ('perl -e "$PERL_REGLAGES" "$REGLAGES" "$PROPS" "$PORT" "$JOUEURS" "$AUTH"', 'valeurs passées en arguments, jamais dans du code'),
     ('rename("$auth.tmp", $auth)', 'authservices.properties remplacé en une fois'),
     ('$ecrire{"verify-lan-ips"} = "true"', 'pseudos vérifiés aussi depuis le loopback et le réseau Docker'),
@@ -766,6 +814,7 @@ case "$TK_FAUX_CURL" in
   echec) exit 22 ;;
   html) printf '<html>404</html>' > "$sortie" ;;
   zero) head -c 6000000 /dev/zero > "$sortie" ;;
+  pe|pe2) { printf 'MZ'; head -c 600000 /dev/zero; [ "$TK_FAUX_CURL" = pe2 ] && printf 'v2'; } > "$sortie" ;;
   elf|elf2) { printf '\177ELF'; head -c 6000000 /dev/zero; [ "$TK_FAUX_CURL" = elf2 ] && printf 'v2'; } > "$sortie" ;;
 esac
 exit 0
@@ -796,7 +845,7 @@ def empreintes(dossier):
     res = {}
     for racine, _, fichiers in os.walk(dossier):
         for f in fichiers:
-            if f in ('MCGalaxy', '.canal-mcgalaxy', 'reglages-classicube.txt'):
+            if f in ('MCGalaxy', 'MCGalaxy_.dll', 'MCGalaxyCLI.exe', '.canal-mcgalaxy', 'reglages-classicube.txt'):
                 continue
             with open(os.path.join(racine, f), 'rb') as h:
                 res[os.path.relpath(os.path.join(racine, f), dossier)] = hashlib.md5(h.read()).hexdigest()
@@ -851,9 +900,35 @@ if bash:
         code, out, urls = installer(dossier, ['false'], 'echec')
         if code != 1:
             soucis.append('installeur, CDN injoignable sans serveur : échec attendu')
+        # Forme Mono (case compilateur) : la bibliothèque et le lanceur console, signature MZ.
+        NET40 = [STABLE.replace('linux64', 'net40/' + f) for f in ('MCGalaxy_.dll', 'MCGalaxyCLI.exe')]
+        dll, cli = os.path.join(inst, 'MCGalaxy_.dll'), os.path.join(inst, 'MCGalaxyCLI.exe')
+        code, out, urls = installer(dossier, ['false', 'true'], 'pe')
+        if code or urls != NET40 or not os.path.isfile(dll) or not os.path.isfile(cli) or 'avec compilateur installe' not in out                 or os.path.exists(bin_):
+            soucis.append('installeur, compilateur coché : code %d, %r, %r' % (code, urls, out))
+        code, out, urls = installer(dossier, ['false', 'True'], 'pe')
+        if code or 'avec compilateur deja a jour' not in out:
+            soucis.append('installeur, compilateur, mêmes fichiers : « deja a jour » attendu : %r' % out)
+        code, out, urls = installer(dossier, ['true', 'true'], 'pe2')
+        if code or urls != [u.replace('/release/', '/latest/') for u in NET40] or not open(dll, 'rb').read().endswith(b'v2'):
+            soucis.append('installeur, compilateur + développement : %r %r' % (urls, out))
+        code, out, urls = installer(dossier, ['{{version_dev}}', '{{compilateur}}'], 'pe', reglages='version_dev=false\ncompilateur=true\r\n')
+        if code or urls != NET40:
+            soucis.append('installeur, cases non remplacées : la valeur du dernier démarrage doit compter (compilateur) : %r' % urls)
+        garde = open(dll, 'rb').read()
+        code, out, urls = installer(dossier, ['false', 'true'], 'elf')
+        if code != 1 or open(dll, 'rb').read() != garde or os.path.exists(dll + '.nouveau') or os.path.exists(cli + '.nouveau'):
+            soucis.append('installeur, compilateur, fichier non .NET reçu : refus attendu, serveur gardé : %r' % out)
+        code, out, urls = installer(dossier, ['false', 'true'], 'echec')
+        if code != 0 or open(dll, 'rb').read() != garde:
+            soucis.append('installeur, compilateur, CDN injoignable avec un serveur installé : on le garde (code 0) : %r' % out)
+        os.remove(dll)
+        code, out, urls = installer(dossier, ['false', 'true'], 'echec')
+        if code != 1:
+            soucis.append('installeur, compilateur, CDN injoignable sans serveur : échec attendu')
         if empreintes(inst) != avant:
             soucis.append('installeur : des données du serveur ont été modifiées : %r' % (set(empreintes(inst).items()) ^ set(avant.items())))
-        print('ok   installeur                   stable / dev / dernier démarrage, contrôle ELF, données intactes')
+        print('ok   installeur                   stable / dev / dernier démarrage, contrôle ELF et MZ, compilateur, données intactes')
       except Exception as e:
         soucis.append('installeur : essai interrompu (%s)' % e)
     finally:

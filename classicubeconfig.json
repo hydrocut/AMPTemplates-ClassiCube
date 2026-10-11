@@ -204,6 +204,22 @@
         }
     },
     {
+        "DisplayName": "Compilateur de plugins (Mono)",
+        "Category": "ClassiCube:view_in_ar",
+        "Subcategory": "Installation:download:4",
+        "Description": "Décoché (défaut) = serveur autonome (linux64), rien à installer, mais les commandes /pcompile et /compile n'existent pas : seuls les plugins déjà compilés (.dll) se chargent. Coché = le même serveur, même version et mêmes données, lancé par Mono (installé dans le conteneur par le template) : dépose MonPlugin.cs dans plugins/, puis /pcompile MonPlugin et /pload MonPlugin dans la console. Consommation mesurée identique (moins de 100 Mo, quelques joueurs). Prend effet au prochain Update puis redémarrage. N'installe que du code dont tu connais la source : un plugin a tous les droits sur le serveur.",
+        "Keywords": "plugin,plugins,compile,pcompile,mono,cs,csharp,compilateur",
+        "FieldName": "compilateur",
+        "InputType": "checkbox",
+        "ParamFieldName": "compilateur",
+        "IncludeInCommandLine": false,
+        "DefaultValue": "false",
+        "EnumValues": {
+            "False": "false",
+            "True": "true"
+        }
+    },
+    {
         "DisplayName": "Service de connexion supplémentaire (adresse)",
         "Category": "ClassiCube:view_in_ar",
         "Subcategory": "Connexion par un autre site:login:5",

@@ -9,7 +9,7 @@ Written for TeamKit, a free French game host, on 11 Oct 2026.
 
 ## Install and Update (`scripts/installer-classicube.sh`)
 
-MCGalaxy publishes a **self-contained Linux build** (Mono embedded) on the ClassiCube CDN:
+MCGalaxy publishes a **self-contained Linux build** (.NET embedded) on the ClassiCube CDN:
 
 | Channel | URL | Notes |
 |---|---|---|
@@ -30,6 +30,25 @@ package). `curl` and `ca-certificates` are added by `ExtraContainerPackages` for
 The checkbox value reaches the installer through the Update command line (`{{version_dev}}`). If
 AMP does not substitute it there, the installer reads the value rendered at the last start
 (`reglages-classicube.txt`), else uses the stable channel.
+
+### Plugin compiler (*Compilateur de plugins (Mono)*, unticked by default)
+
+The self-contained build is compiled without MCGalaxy's `Compiling` module: `/pcompile`, `/compile`
+and `/cmdcreate` are **unknown commands** there, and a `plugins/*.cs` file cannot be used (only
+ready-made `.dll` plugins load). Ticking the box makes the Update download the **same version** as a
+.NET Framework build instead, `net40/MCGalaxy_.dll` + `net40/MCGalaxyCLI.exe` from the same CDN
+channel (1.6 MB, PE files checked by their `MZ` signature), and the start script runs
+`exec mono MCGalaxyCLI.exe`. Mono 6.12 (`mono-runtime`, `mono-mcs` and three libraries) comes from
+Debian through `ExtraContainerPackages`: about 14 MB downloaded and **~13 s more at each container
+start**, for every instance of this template (AMP cannot install a package only when a box is
+ticked). Same data folders, same console, same `/shutdown`; if Mono or the two files are missing,
+the script says so and starts the self-contained build.
+
+Then: put `MyPlugin.cs` in `plugins/`, and in the AMP console `/pcompile MyPlugin` then
+`/pload MyPlugin` (it also loads at every start once compiled). Tested on 11 Oct 2026 in a
+disposable `cubecoders/ampbase:debian` container: a real 6 KB plugin (`DayNightCycle.cs`) compiled
+with `mcs` and loaded, `/serverinfo` read 77 MB of memory and 0.04 % CPU (the self-contained build:
+66 MB, 0.1 %). **A plugin has every right on the server**: only install code you can read.
 
 ## Start (`scripts/lancer-classicube.sh`)
 
@@ -84,6 +103,7 @@ below and must **never** be opened to the world.
 | Filtre de grossièretés | unticked | `profanity-filter` (English list in `text/badwords.txt`) |
 | Thème des nouvelles cartes | flat | `default-mapgen-theme`: theme used by `/newlvl` without a theme. The 22 values offered are the non-admin themes registered by MCGalaxy 1.9.5.3 (`SimpleGen`, `RealisticMapGen`, `ClassicGenerator`, `fCraftMapGen`). **It does not change the main map**: MCGalaxy always generates `main` flat, 128×64×128 (`Server.Init.cs`, `GenerateMain`) |
 | Version de développement | unticked | none: used by the Update |
+| Compilateur de plugins (Mono) | unticked | none: Update (which build) and start script (`mono MCGalaxyCLI.exe`) |
 | Service de connexion supplémentaire (adresse) | empty | `HeartbeatURL` = classicube.net alone, or classicube.net + this address |
 | Suffixe des pseudos de ce service | `+` | `name-suffix` of that service in `properties/authservices.properties` |
 | Relais pour un proxy web | unticked | none: starts `socat` on `RelayPort` |
@@ -296,6 +316,13 @@ aucun paquet pour le serveur. Un seul port à ouvrir, **25565 en TCP** (le 2e, 2
   règlement, filtre de grossièretés, thème des nouvelles cartes, version de développement.
 - **Nom du serveur** : MCGalaxy refuse tout caractère non ASCII (il remplacerait le nom entier) :
   accents et symboles sont convertis, le « · » du nom par défaut devient « - ».
+- **Plugins à compiler** (case « Compilateur de plugins (Mono) », décochée par défaut) : le
+  binaire autonome n'a pas `/pcompile`. Cochée, l'Update installe la même version en .NET
+  Framework (`MCGalaxy_.dll` + `MCGalaxyCLI.exe`) lancée par Mono (paquets Debian du conteneur,
+  ~13 s de plus à chaque démarrage). Ensuite : `MonPlugin.cs` dans `plugins/`, puis
+  `/pcompile MonPlugin` et `/pload MonPlugin`. Consommation mesurée : identique (77 Mo, 0,04 %).
+  Instance déjà créée : récupérer le template (Fetch), recopier les manifestes de configuration
+  (instance arrêtée), puis Update, démarrage, Update, redémarrage.
 - **Devenir propriétaire** : `/rank <pseudo ClassiCube> owner` dans la console d'AMP, puis
   `/setpass` et `/pass` à la connexion.
 - **Console d'AMP** branchée sur le serveur, arrêt par `/shutdown` (10 s de compte à rebours),

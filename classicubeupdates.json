@@ -37,7 +37,7 @@
         "UpdateSourcePlatform": "Linux",
         "UpdateSource": "Executable",
         "UpdateSourceData": "/bin/bash",
-        "UpdateSourceArgs": "\"{{$FullBaseDir}}installer-classicube.sh\" \"{{$FullBaseDir}}\" \"{{version_dev}}\"",
+        "UpdateSourceArgs": "\"{{$FullBaseDir}}installer-classicube.sh\" \"{{$FullBaseDir}}\" \"{{version_dev}}\" \"{{compilateur}}\"",
         "SkipOnFailure": false
     }
 ]

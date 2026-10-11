@@ -2,6 +2,7 @@
 # Une ligne cle=valeur par reglage, lue par lancer-classicube.sh qui recopie les valeurs
 # dans properties/server.properties. Ne pas modifier ici : changer les reglages dans AMP.
 version_dev={{version_dev}}
+compilateur={{compilateur}}
 relais_web={{relais_web}}
 service_connexion={{service_connexion}}
 suffixe_service={{suffixe_service}}

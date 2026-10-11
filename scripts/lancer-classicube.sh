@@ -13,7 +13,8 @@
 # 3. si la case « Relais pour un proxy web » est cochee : demarre socat, qui recoit sur le
 #    port du relais et se reconnecte a 127.0.0.1:<port du jeu>. Un nginx de la meme machine
 #    arrive ainsi en loopback, seule origine dont MCGalaxy croit l'en-tete X-Real-IP ;
-# 4. remplace ce script par le serveur (exec) : la console d'AMP arrive directement sur
+# 4. remplace ce script par le serveur (exec), le binaire autonome MCGalaxy, ou Mono avec
+#    MCGalaxyCLI.exe si la case « Compilateur de plugins » est cochee : la console d'AMP arrive directement sur
 #    l'entree de MCGalaxy (/rank, /say, /save all...), et la commande d'arret d'AMP
 #    (/shutdown) aussi.
 #
@@ -53,7 +54,23 @@ if [ "$JOUEURS" -lt 1 ] || [ "$JOUEURS" -gt 256 ]; then
   JOUEURS=32
 fi
 
-if [ -z "$TK_ESSAI_REGLAGES" ] && [ ! -f "$BIN" ]; then
+# ── Forme du serveur (case compilateur) ──────────────────────────────────────────
+# La valeur de la case est seulement comparee a « true » : jamais executee.
+COMPIL=$(sed -n 's/^compilateur=\(.*\)$/\1/p' "$REGLAGES" 2>/dev/null | head -n 1 | tr -d '\r[:space:]')
+MONO=0
+if [ "${COMPIL,,}" = true ]; then
+  if [ ! -f "$ICI/MCGalaxyCLI.exe" ] || [ ! -f "$ICI/MCGalaxy_.dll" ]; then
+    echo "TeamKit : compilateur de plugins coche, mais MCGalaxyCLI.exe et MCGalaxy_.dll ne sont pas encore installes : lance Update dans AMP."
+  elif ! command -v mono >/dev/null 2>&1; then
+    echo "TeamKit : compilateur de plugins coche, mais Mono manque dans le conteneur (paquets du template, installes a son demarrage) : recupere la derniere version du template (Fetch dans ADS) puis redemarre l'instance."
+  else
+    MONO=1
+  fi
+  if [ "$MONO" = 0 ] && [ -f "$BIN" ]; then
+    echo "TeamKit : en attendant, demarrage du serveur autonome (sans /pcompile)."
+  fi
+fi
+if [ -z "$TK_ESSAI_REGLAGES" ] && [ "$MONO" = 0 ] && [ ! -f "$BIN" ]; then
   echo "ERREUR : le serveur MCGalaxy n'est pas installe dans ce dossier. Lance Update dans AMP."
   exit 1
 fi
@@ -69,11 +86,13 @@ use warnings;
 my ($fichier, $props, $port, $joueurs, $auth) = @ARGV;
 
 # cle du modele AMP => [cle de server.properties, genre, choix possibles]
-# version_dev ne sert qu a l Update (installer-classicube.sh), relais_web au script bash
+# version_dev ne sert qu a l Update (installer-classicube.sh), compilateur a l Update et au
+# script bash (forme du serveur a lancer), relais_web au script bash
 # (demarrage de socat) : rien a ecrire. service_connexion et suffixe_service sont traites
 # a part (HeartbeatURL et properties/authservices.properties), apres les autres.
 my %TABLE = (
   version_dev          => [undef,                     "bool"],
+  compilateur          => [undef,                     "bool"],
   relais_web           => [undef,                     "bool"],
   service_connexion    => ["HeartbeatURL",            "service"],
   suffixe_service      => [undef,                     "suffixe"],
@@ -370,9 +389,15 @@ if [ "$RELAIS_ACTIF" = 1 ]; then
   fi
 fi
 
-[ -x "$BIN" ] || chmod +x "$BIN"
-echo "TeamKit : demarrage de MCGalaxy. Pour devenir proprietaire : /rank <ton pseudo ClassiCube> owner (ici, dans la console)."
-# TERM=dumb : le Mono embarque n'ecrit alors aucun code couleur ANSI dans la console d'AMP
+# TERM=dumb : le serveur n'ecrit alors aucun code couleur ANSI dans la console d'AMP
 # (la console n'est pas un terminal ; les regex du template les tolerent quand meme).
 export TERM=dumb
+if [ "$MONO" = 1 ]; then
+  echo "TeamKit : demarrage de MCGalaxy avec compilateur de plugins (Mono). Plugin : plugins/MonPlugin.cs, puis /pcompile MonPlugin et /pload MonPlugin ici. Pour devenir proprietaire : /rank <ton pseudo ClassiCube> owner."
+  # Meme processus (exec) : la console d'AMP arrive sur l'entree du serveur, et le relais
+  # (setpriv --pdeathsig) s'arrete avec lui comme avec le binaire autonome.
+  exec mono "$ICI/MCGalaxyCLI.exe"
+fi
+[ -x "$BIN" ] || chmod +x "$BIN"
+echo "TeamKit : demarrage de MCGalaxy. Pour devenir proprietaire : /rank <ton pseudo ClassiCube> owner (ici, dans la console)."
 exec "$BIN"
