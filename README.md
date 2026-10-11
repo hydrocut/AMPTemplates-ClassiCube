@@ -44,6 +44,10 @@ start**, for every instance of this template (AMP cannot install a package only 
 ticked). Same data folders, same console, same `/shutdown`; if Mono or the two files are missing,
 the script says so and starts the self-contained build.
 
+`ca-certificates-mono` is part of the list: without it Mono trusts no HTTPS certificate, and the
+heartbeat to an extra authentication service (`https://…`) fails with `TrustFailure` (seen on our
+instance; classicube.net is reached over plain HTTP and kept working).
+
 Then: put `MyPlugin.cs` in `plugins/`, and in the AMP console `/pcompile MyPlugin` then
 `/pload MyPlugin` (it also loads at every start once compiled). Tested on 11 Oct 2026 in a
 disposable `cubecoders/ampbase:debian` container: a real 6 KB plugin (`DayNightCycle.cs`) compiled
@@ -319,10 +323,13 @@ aucun paquet pour le serveur. Un seul port à ouvrir, **25565 en TCP** (le 2e, 2
 - **Plugins à compiler** (case « Compilateur de plugins (Mono) », décochée par défaut) : le
   binaire autonome n'a pas `/pcompile`. Cochée, l'Update installe la même version en .NET
   Framework (`MCGalaxy_.dll` + `MCGalaxyCLI.exe`) lancée par Mono (paquets Debian du conteneur,
-  ~13 s de plus à chaque démarrage). Ensuite : `MonPlugin.cs` dans `plugins/`, puis
+  ~13 s de plus à chaque démarrage, dont `ca-certificates-mono` : sans lui Mono refuse tout
+  HTTPS et le service de connexion supplémentaire échoue en « TrustFailure »). Ensuite : `MonPlugin.cs` dans `plugins/`, puis
   `/pcompile MonPlugin` et `/pload MonPlugin`. Consommation mesurée : identique (77 Mo, 0,04 %).
   Instance déjà créée : récupérer le template (Fetch), recopier les manifestes de configuration
-  (instance arrêtée), puis Update, démarrage, Update, redémarrage.
+  (instance arrêtée), ajouter les paquets dans ADS (réglages de l'instance → Container Packages :
+  AMP garde la liste de chaque instance et ne la reprend pas du template), puis démarrage, Update,
+  redémarrage.
 - **Devenir propriétaire** : `/rank <pseudo ClassiCube> owner` dans la console d'AMP, puis
   `/setpass` et `/pass` à la connexion.
 - **Console d'AMP** branchée sur le serveur, arrêt par `/shutdown` (10 s de compte à rebours),

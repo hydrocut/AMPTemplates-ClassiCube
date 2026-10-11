@@ -162,7 +162,9 @@ if cles.get('Meta.URL') != manifest['url']:
 if cles.get('Meta.SpecificDockerImage') != 'cubecoders/ampbase:debian' or cles.get('Meta.ContainerPolicy') != 'Required':
     soucis.append('conteneur cubecoders/ampbase:debian obligatoire')
 paquets = json.loads(cles.get('Meta.ExtraContainerPackages', '[]'))
-PAQUETS = ['ca-certificates', 'curl', 'libmono-system-data4.0-cil', 'libmono-system-runtime-serialization4.0-cil',
+# ca-certificates-mono : sans lui, Mono refuse tout certificat HTTPS (heartbeat vers un autre site :
+# « TrustFailure », vu le 11/10/2026 sur l'instance TeamKit).
+PAQUETS = ['ca-certificates', 'ca-certificates-mono', 'curl', 'libmono-system-data4.0-cil', 'libmono-system-runtime-serialization4.0-cil',
            'libsqlite3-0', 'mono-mcs', 'mono-runtime', 'socat']
 if sorted(paquets) != PAQUETS:
     soucis.append('ExtraContainerPackages : curl, ca-certificates (Update), socat (relais) et Mono (compilateur) seulement : %r' % paquets)
